@@ -12,7 +12,14 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / 'scripts'))
 import terraform_tenant as tt
 
-FIXTURES = ROOT / 'infrastructure' / 'terraform' / 'modules' / 'tenant' / 'tests' / 'fixtures'
+# Mismo formato que genera POST /api/tenants/:slug/tfvars.
+TFVARS = {
+    'tenant_id': 'i2-fixture', 'tenant_name': 'Instituto Fixture', 'plan_type': 'estandar', 'region': 'us-east-1',
+    'frontend_ami_id': 'ami-0aaaaaaaaaaaaaaa1', 'backend_ami_id': 'ami-0bbbbbbbbbbbbbbb2', 'database_ami_id': 'ami-0ccccccccccccccc3',
+    'plan_capacity': {'frontend': {'instance_type': 't3.micro', 'disk_gib': 16}, 'backend': {'instance_type': 't3.small', 'disk_gib': 20},
+                      'database': {'instance_type': 't3.small', 'disk_gib': 40}},
+    'engine': 'terraform', 'request_id': '00000000-0000-4000-8000-000000000001', 'key_pair_name': 'practico7-asistencia',
+}
 
 
 def args(**overrides):
@@ -25,37 +32,35 @@ def args(**overrides):
 class TerraformTenantTests(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
-        for name in ('frontend.yaml', 'backend.yaml', 'database.yaml'):
-            shutil.copy(FIXTURES / name, self.tmp / name)
-        self.base = json.loads((FIXTURES / 'request.json').read_text(encoding='utf-8'))
 
     def tearDown(self):
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def write(self, **changes):
-        request = dict(self.base, **changes)
-        path = self.tmp / 'request.json'
-        path.write_text(json.dumps(request), encoding='utf-8')
+        data = json.loads(json.dumps(TFVARS))
+        data.update(changes)
+        path = self.tmp / 'terraform.tfvars.json'
+        path.write_text(json.dumps(data), encoding='utf-8')
         return path
 
-    def test_valid_request_is_accepted(self):
-        path, request = tt.load_request(self.write())
-        self.assertEqual(request['tenant_slug'], 'i2-fixture')
+    def test_valid_tfvars_is_accepted(self):
+        path, tfvars = tt.load_tfvars(self.write())
+        self.assertEqual(tfvars['tenant_id'], 'i2-fixture')
         self.assertTrue(path.is_absolute())
 
-    def test_rejects_draft_foreign_engine_and_bad_slug(self):
-        for changes in ({'deployable': False}, {'engine': 'pulumi'}, {'engine': 'cloudformation'}, {'tenant_slug': '../otro'}, {'schema_version': 2}):
+    def test_rejects_foreign_engine_bad_slug_plan_and_amis(self):
+        for changes in ({'engine': 'pulumi'}, {'engine': 'cloudformation'}, {'tenant_id': '../otro'}, {'tenant_id': 'Colegio Demo'},
+                        {'plan_type': 'premium'}, {'tenant_name': ' '}, {'region': 'marte'}, {'database_ami_id': 'ubuntu'}):
             with self.subTest(changes=changes), self.assertRaises(ValueError):
-                tt.load_request(self.write(**changes))
+                tt.load_tfvars(self.write(**changes))
 
-    def test_rejects_images_from_other_region_and_missing_user_data(self):
-        images = json.loads(json.dumps(self.base['images']))
-        images['backend']['region'] = 'sa-east-1'
+    def test_rejects_small_disk_and_operator_data_inside_tenant_tfvars(self):
+        capacity = json.loads(json.dumps(TFVARS['plan_capacity']))
+        capacity['frontend']['disk_gib'] = 10
         with self.assertRaises(ValueError):
-            tt.load_request(self.write(images=images))
-        (self.tmp / 'database.yaml').unlink()
+            tt.load_tfvars(self.write(plan_capacity=capacity))
         with self.assertRaises(ValueError):
-            tt.load_request(self.write())
+            tt.load_tfvars(self.write(expected_account_id='123456789012'))
 
     def test_ssh_cidr_only_public_single_hosts(self):
         self.assertEqual(tt.ssh_cidr('8.8.8.8/32'), '8.8.8.8/32')
@@ -63,35 +68,38 @@ class TerraformTenantTests(unittest.TestCase):
             with self.subTest(bad=bad), self.assertRaises(ValueError):
                 tt.ssh_cidr(bad)
 
-    def test_tfvars_contain_no_secrets_and_state_is_per_engine_and_tenant(self):
-        path, request = tt.load_request(self.write())
-        tfvars = tt.build_tfvars(path, request, args())
-        text = json.dumps(tfvars)
+    def test_operator_tfvars_have_no_secrets_and_workspace_is_per_tenant(self):
+        _, tfvars = tt.load_tfvars(self.write())
+        operator = tt.operator_tfvars(tfvars, args())
+        text = json.dumps(operator)
         self.assertNotIn('PRIVATE KEY', text)
         self.assertNotIn('aws_secret_access_key', text)
-        self.assertEqual(tfvars['ssh_private_key_path'], 'C:/claves/practico7-asistencia.pem')
-        self.assertEqual(tfvars['state_reference']['key_or_stack'], 'infrastructure/terraform/state/i2-fixture/terraform.tfstate')
-        other = tt.paths(dict(request, engine='opentofu', tenant_slug='i2-otro'))
-        self.assertNotEqual(other['state'], tt.paths(request)['state'])
-        self.assertNotEqual(other['work'], tt.paths(request)['work'])
+        self.assertEqual(operator['ssh_private_key_path'], 'C:/claves/practico7-asistencia.pem')
+        self.assertEqual(operator['state_reference']['key_or_stack'], 'infrastructure/terraform/terraform.tfstate.d/i2-fixture/terraform.tfstate')
+        other = tt.paths(dict(tfvars, engine='opentofu', tenant_id='i2-otro'))
+        self.assertEqual(other['workspace'], 'i2-otro')
+        self.assertEqual(other['root'], ROOT / 'infrastructure' / 'opentofu')
+        self.assertNotEqual(other['work'], tt.paths(tfvars)['work'])
         with self.assertRaises(ValueError):
-            tt.build_tfvars(path, request, args(account_id='12'))
+            tt.operator_tfvars(tfvars, args(account_id='12'))
 
-    def test_commands_are_argument_lists_with_tenant_state(self):
-        _, request = tt.load_request(self.write())
-        location = tt.paths(request)
-        steps = tt.commands('terraform', 'apply', location, location['work'] / 'tenant.tfvars.json', auto_approve=False)
+    def test_commands_select_tenant_workspace_before_running(self):
+        _, tfvars = tt.load_tfvars(self.write())
+        location = tt.paths(tfvars)
+        files = [self.tmp / 'terraform.tfvars.json', self.tmp / 'operator.tfvars.json']
+        steps = tt.commands('terraform', 'apply', location, files, auto_approve=False)
         self.assertTrue(all(isinstance(step, list) for step in steps))
-        self.assertIn(f'-backend-config=path={location["state"].as_posix()}', steps[0])
-        self.assertNotIn('-auto-approve', steps[1])
-        self.assertEqual(tt.commands('tofu', 'plan', location, location['work'] / 'x.json', False)[1][:2], ['tofu', 'plan'])
+        self.assertEqual(steps[1], ['terraform', 'workspace', 'select', '-or-create=true', 'i2-fixture'])
+        self.assertEqual(sum(arg.startswith('-var-file=') for arg in steps[2]), 2)
+        self.assertNotIn('-auto-approve', steps[2])
+        self.assertEqual(tt.commands('tofu', 'plan', location, files, False)[2][:2], ['tofu', 'plan'])
 
-    def test_destroy_requires_confirmation_and_draft_never_reaches_engine(self):
+    def test_destroy_requires_confirmation_and_invalid_tfvars_never_reach_engine(self):
         path = self.write()
         with patch.object(tt.subprocess, 'run') as run:
-            self.assertEqual(tt.main(['destroy', '--request', str(path), '--ssh-cidr', '8.8.8.8/32', '--account-id', '123456789012']), 2)
-            draft = self.write(deployable=False)
-            self.assertEqual(tt.main(['plan', '--request', str(draft), '--ssh-cidr', '8.8.8.8/32', '--account-id', '123456789012']), 2)
+            self.assertEqual(tt.main(['destroy', '--tfvars', str(path), '--ssh-cidr', '8.8.8.8/32', '--account-id', '123456789012']), 2)
+            bad = self.write(engine='pulumi')
+            self.assertEqual(tt.main(['plan', '--tfvars', str(bad), '--ssh-cidr', '8.8.8.8/32', '--account-id', '123456789012']), 2)
             run.assert_not_called()
 
 

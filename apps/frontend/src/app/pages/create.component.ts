@@ -1,7 +1,8 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { forkJoin } from 'rxjs';
-import type { GoldenImage, IaCEngine, Plan } from '@modulo2/contracts';
+import { HttpErrorResponse } from '@angular/common/http';
+import { EMAIL_PATTERN, TENANT_SLUG_PATTERN, type GoldenImage, type IaCEngine, type Plan, type TenantDraftCreated, type TenantValidationError } from '@modulo2/contracts';
 import { ApiService } from '../api.service';
 import { ROLES } from './plans.component';
 
@@ -10,8 +11,6 @@ const ENGINES: { id: IaCEngine; label: string }[] = [
   { id: 'terraform', label: 'Terraform (motor principal · Int. 2)' }, { id: 'opentofu', label: 'OpenTofu (motor principal · Int. 2)' },
   { id: 'pulumi', label: 'Pulumi (2.º motor · Int. 3)' }, { id: 'cloudformation', label: 'CloudFormation (2.º motor · Int. 3)' },
 ];
-const SLUG = /^[a-z][a-z0-9-]{2,39}$/;
-const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 @Component({
   imports: [RouterLink],
@@ -32,6 +31,11 @@ const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       </div>
 
       @if (error()) { <div class="notice err" role="alert">{{ error() }} <button class="link" (click)="load()">Reintentar</button></div> }
+      @if (savedDraft(); as saved) {
+        <div class="notice info" role="status">Borrador guardado en PostgreSQL: <strong class="mono">{{ saved.tenant_slug }}</strong> (estado {{ saved.status }}). Aún no se aprovisionan recursos.
+          @if (tfvarsPath()) { tfvars para {{ engine() }}: <code>{{ tfvarsPath() }}</code>. }
+          <a class="link" routerLink="/tenants">Ver en la lista de tenants →</a></div>
+      }
 
       <div class="layout">
         <div class="stack">
@@ -42,13 +46,13 @@ const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
                 <div class="c6"><label for="name">Nombre de la institución <span class="req">*</span></label>
                   <input id="name" type="text" placeholder="Ej. Universidad Unifranz / UPSA" [value]="name()" (input)="name.set(val($event))" [class.invalid]="touched() && !name().trim()"></div>
                 <div class="c6"><label for="slug">Identificador del tenant <span class="req">*</span></label>
-                  <div class="input-suffix"><input id="slug" type="text" [value]="slug()" (input)="slug.set(val($event))" [class.invalid]="touched() && !slugValid()"><span>.escuelas.app</span></div>
-                  @if (touched() && !slugValid()) { <p class="field-error">3 a 40 letras minúsculas, números o guiones; debe comenzar con letra.</p> }</div>
+                  <div class="input-suffix"><input id="slug" type="text" [value]="slug()" (input)="slug.set(val($event)); resetValidation()" [class.invalid]="!!slugError()"><span>.escuelas.app</span></div>
+                  @if (slugError()) { <p class="field-error" role="alert">{{ slugError() }}</p> }</div>
               </div>
               <div class="field-row">
-                <div class="c6"><label for="email">Correo del administrador</label>
-                  <input id="email" type="email" [value]="email()" (input)="email.set(val($event))" [class.invalid]="touched() && !emailValid()">
-                  @if (touched() && !emailValid()) { <p class="field-error">Ingresa un correo válido.</p> }</div>
+                <div class="c6"><label for="email">Correo del administrador <span class="req">*</span></label>
+                  <input id="email" type="email" [value]="email()" (input)="email.set(val($event)); resetValidation()" [class.invalid]="!!emailError()">
+                  @if (emailError()) { <p class="field-error" role="alert">{{ emailError() }}</p> }</div>
                 <div class="c3"><label for="region">Región de despliegue</label>
                   <select id="region" (change)="region.set(val($event))">@for (r of regions; track r.id) { <option [value]="r.id" [selected]="r.id === region()">{{ r.label }}</option> }</select></div>
                 <div class="c3"><label for="env">Entorno</label><select id="env"><option selected>Producción</option></select></div>
@@ -149,7 +153,8 @@ const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
         <div>
           <a class="btn" routerLink="/tenants">Cancelar</a>
           @if (step() > 1) { <button class="btn" (click)="go(step() - 1)">← Atrás</button> }
-          @if (step() < 3) { <button class="btn primary" (click)="next()">Continuar →</button> }
+          <button class="btn" (click)="saveDraft()" [disabled]="saving() || !!savedDraft()">{{ savedDraft() ? 'Borrador guardado' : saving() ? 'Guardando…' : 'Guardar borrador' }}</button>
+          @if (step() < 3) { <button class="btn primary" (click)="next()" [disabled]="validating()">{{ validating() ? 'Validando…' : 'Continuar →' }}</button> }
         </div>
       </div>
     </section>
@@ -164,8 +169,15 @@ export class CreateComponent {
   readonly plans = signal<Plan[]>([]); readonly images = signal<GoldenImage[]>([]);
   readonly loading = signal(true); readonly error = signal('');
   readonly selectedPlan = computed(() => this.plans().find(plan => plan.slug === this.planSlug()));
-  readonly slugValid = computed(() => SLUG.test(this.slug()));
-  readonly emailValid = computed(() => !this.email() || EMAIL.test(this.email()));
+  readonly slugValid = computed(() => TENANT_SLUG_PATTERN.test(this.slug().trim()));
+  readonly emailValid = computed(() => EMAIL_PATTERN.test(this.email().trim()));
+  // Paso 1 validado por POST /api/tenants/validate (identificador libre y formatos correctos).
+  readonly validating = signal(false); readonly validated = signal(false);
+  readonly serverErrors = signal<TenantValidationError[]>([]);
+  readonly slugError = computed(() => this.serverErrors().find(e => e.field === 'tenant_slug')?.message
+    ?? (this.touched() && !this.slugValid() ? '3 a 40 letras minúsculas, números o guiones; debe comenzar con letra.' : ''));
+  readonly emailError = computed(() => this.serverErrors().find(e => e.field === 'admin_email')?.message
+    ?? (this.touched() && !this.emailValid() ? 'Ingresa un correo válido, por ejemplo admin@institucion.edu.' : ''));
   readonly slugOrPlaceholder = computed(() => this.slugValid() ? this.slug() : (this.slug().trim() || 'nuevo-tenant'));
   readonly regionImages = computed(() => this.images().filter(image => image.region === this.region()));
   readonly imagesReady = computed(() => ROLES.every(role => this.regionImages().some(image => image.role === role.key)));
@@ -178,11 +190,53 @@ export class CreateComponent {
   }
   val(event: Event) { return (event.target as HTMLInputElement | HTMLSelectElement).value; }
   imageFor(role: string) { return this.regionImages().find(image => image.role === role); }
-  go(step: number) { this.step.set(step); }
-  next() {
+  /** Volver atrás es libre; avanzar más allá del Paso 1 exige la validación del servidor. */
+  go(step: number) {
+    if (step === 1 || this.validated()) this.step.set(step);
+    else if (this.step() === 1) this.next(step);
+  }
+  resetValidation() { this.validated.set(false); this.serverErrors.set([]); }
+
+  /** Guarda el borrador (status PENDING) con POST /api/tenants/drafts. El servidor vuelve a validar todo. */
+  readonly saving = signal(false); readonly savedDraft = signal<TenantDraftCreated | null>(null); readonly tfvarsPath = signal('');
+  saveDraft() {
     this.touched.set(true);
-    if (this.step() === 1 && (!this.name().trim() || !this.slugValid() || !this.emailValid())) return;
-    this.step.update(step => Math.min(3, step + 1));
+    if (!this.name().trim() || !this.slugValid() || !this.emailValid()) { this.step.set(1); return; }
+    this.saving.set(true); this.error.set('');
+    this.api.createDraft({ institution_name: this.name().trim(), tenant_slug: this.slug().trim(), admin_email: this.email().trim(),
+      plan_slug: this.planSlug(), region: this.region(), engine: this.engine() }).subscribe({
+      next: ({ data }) => {
+        this.saving.set(false); this.savedDraft.set(data);
+        // Motor principal (Terraform/OpenTofu): genera el tfvars del tenant para scripts/terraform_tenant.py.
+        if (this.engine() === 'terraform' || this.engine() === 'opentofu') {
+          this.api.generateTfvars(data.tenant_slug).subscribe({
+            next: ({ data: generated }) => this.tfvarsPath.set(generated.path),
+            error: (response: HttpErrorResponse) => this.error.set(`Borrador guardado, pero no se generó el tfvars: ${response.error?.message ?? 'API no disponible'}`),
+          });
+        }
+      },
+      error: (response: HttpErrorResponse) => {
+        this.saving.set(false);
+        const errors: TenantValidationError[] = response.status === 422 ? response.error?.errors ?? [] : [];
+        this.serverErrors.set(errors);
+        const others = errors.filter(e => e.field !== 'tenant_slug' && e.field !== 'admin_email').map(e => e.message);
+        if (errors.some(e => e.field === 'tenant_slug' || e.field === 'admin_email' || e.field === 'institution_name')) this.step.set(1);
+        this.error.set(errors.length ? (others.join(' ') || 'Revisa los campos marcados en el Paso 1.') : 'No se pudo guardar el borrador. Verifica que la API esté disponible.');
+      },
+    });
+  }
+  next(target = this.step() + 1) {
+    this.touched.set(true);
+    if (this.step() !== 1) { this.step.set(Math.min(3, target)); return; }
+    if (!this.name().trim() || !this.slugValid() || !this.emailValid()) return;
+    this.validating.set(true); this.error.set('');
+    this.api.validateTenant({ tenant_slug: this.slug().trim(), admin_email: this.email().trim() }).subscribe({
+      next: ({ data }) => {
+        this.validating.set(false); this.serverErrors.set(data.errors); this.validated.set(data.valid);
+        if (data.valid) this.step.set(Math.min(3, target));
+      },
+      error: () => { this.validating.set(false); this.error.set('No se pudo validar el tenant con el servidor. Verifica que la API esté disponible.'); },
+    });
   }
   load() {
     this.loading.set(true); this.error.set('');

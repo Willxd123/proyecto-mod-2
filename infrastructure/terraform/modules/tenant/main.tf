@@ -1,24 +1,37 @@
 # Motor principal (integrante 2): un tenant = una VPC, tres security groups y tres EC2
-# creadas desde las Golden AMIs del integrante 1. Todo se deriva del DeploymentRequest;
-# los tamaños vienen de plan_snapshot (config/plans.json), no se repiten aquí.
+# creadas desde las Golden AMIs del integrante 1, con el tamaño del plan elegido.
 
 locals {
-  request     = jsondecode(file(var.request_file))
-  request_dir = dirname(var.request_file)
-  roles       = toset(["frontend", "backend", "database"])
-  slug        = local.request.tenant_slug
-  plan        = local.request.plan_snapshot
+  roles = toset(["frontend", "backend", "database"])
+  slug  = var.tenant_id
+
+  # Los 3 AMI IDs de Packer, uno por rol.
+  ami_ids = {
+    frontend = var.frontend_ami_id
+    backend  = var.backend_ami_id
+    database = var.database_ami_id
+  }
 
   tags = {
     Project   = "proyecto-modulo-2"
     MemberId  = var.member_id
-    TenantId  = local.slug
-    RunId     = local.request.request_id
-    Plan      = local.plan.slug
-    ManagedBy = local.request.engine
+    TenantId  = var.tenant_id
+    RunId     = var.request_id != "" ? var.request_id : var.tenant_id
+    Plan      = var.plan_type
+    ManagedBy = var.engine
   }
 
-  instance_types = distinct([for role in local.roles : local.plan.roles[role].instance_type])
+  # cloud-init del integrante 1 (infrastructure/cloud-init/<rol>.yaml.tmpl): hostname <tenant>-<rol>,
+  # zona America/La_Paz, swap 2 GiB y SSH solo por llave. Se normalizan saltos de línea a LF.
+  ssh_keys_block = length(var.ssh_authorized_keys) > 0 ? "ssh_authorized_keys:\n${join("", [for k in var.ssh_authorized_keys : "  - ${jsonencode(k)}\n"])}" : ""
+  user_data = {
+    for role in local.roles : role => replace(
+      replace(replace(file("${path.module}/../../../cloud-init/${role}.yaml.tmpl"), "\r\n", "\n"), "__TENANT_SLUG__", var.tenant_id),
+      "__SSH_AUTHORIZED_KEYS__\n", local.ssh_keys_block
+    )
+  }
+
+  instance_types = distinct([for role in local.roles : var.plan_capacity[role].instance_type])
 
   # Zona que ofrece todos los tipos de instancia del plan (t3 no existe en todas las zonas).
   offered_pairs = toset([
@@ -50,7 +63,7 @@ data "aws_ami" "golden" {
 
   filter {
     name   = "image-id"
-    values = [local.request.images[each.key].ami_id]
+    values = [local.ami_ids[each.key]]
   }
 
   lifecycle {

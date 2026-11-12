@@ -1,9 +1,33 @@
-# Un tenant por estado. Todas las variables se validan dentro del módulo.
+# Un tenant por workspace. Todas las variables se validan dentro del módulo.
+
+# Candado: el workspace activo debe llamarse igual que el tenant, para que los datos de un tenant
+# nunca se apliquen sobre el estado de otro.
+resource "terraform_data" "workspace_guard" {
+  input = var.tenant_id
+
+  lifecycle {
+    precondition {
+      condition     = terraform.workspace == var.tenant_id
+      error_message = "El workspace activo (${terraform.workspace}) no coincide con tenant_id (${var.tenant_id}). Ejecute: tofu workspace select -or-create ${var.tenant_id}"
+    }
+  }
+}
+
 module "tenant" {
   source = "../terraform/modules/tenant"
 
-  request_file         = var.request_file
-  expected_account_id  = var.expected_account_id
+  tenant_id            = var.tenant_id
+  tenant_name          = var.tenant_name
+  plan_type            = var.plan_type
+  plan_capacity        = var.plan_capacity
+  region               = var.region
+  frontend_ami_id      = var.frontend_ami_id
+  backend_ami_id       = var.backend_ami_id
+  database_ami_id      = var.database_ami_id
+  engine               = var.engine
+  request_id           = var.request_id
+  key_pair_name        = var.key_pair_name
+  ssh_authorized_keys  = var.ssh_authorized_keys
   member_id            = var.member_id
   ssh_ingress_cidrs    = var.ssh_ingress_cidrs
   monitoring_cidrs     = var.monitoring_cidrs

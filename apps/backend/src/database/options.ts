@@ -5,6 +5,7 @@ import { BACKEND_ROOT } from '../paths';
 import { CatalogPlan, GoldenImageRecord, Tenant, TenantAlert } from './entities';
 import { InitialCatalog1730000000000 } from './migrations/initial';
 import { GoldenImagesAndPlanColumns1730000000001 } from './migrations/golden-images';
+import { TenantProvisioningFields1730000000002 } from './migrations/tenant-provisioning';
 
 config({ path: resolve(BACKEND_ROOT, '.env') });
 
@@ -18,7 +19,7 @@ export function databaseOptions(): TypeOrmModuleOptions {
     username: process.env.DATABASE_USER ?? 'postgres', password,
     database: process.env.DATABASE_NAME ?? 'proyecto_modulo_2',
     ssl: process.env.DATABASE_SSL === 'true' ? { rejectUnauthorized: true } : false,
-    entities: [CatalogPlan, GoldenImageRecord, Tenant, TenantAlert], migrations: [InitialCatalog1730000000000, GoldenImagesAndPlanColumns1730000000001],
+    entities: [CatalogPlan, GoldenImageRecord, Tenant, TenantAlert], migrations: [InitialCatalog1730000000000, GoldenImagesAndPlanColumns1730000000001, TenantProvisioningFields1730000000002],
     migrationsRun: true, synchronize: false, logging: false, retryAttempts: 1,
   };
 }

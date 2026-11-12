@@ -4,10 +4,10 @@ output "provisioning_result" {
   description = "ProvisioningResult (schema_version 1)."
   value = {
     schema_version = 1
-    request_id     = local.request.request_id
+    request_id     = var.request_id
     tenant_slug    = local.slug
-    engine         = local.request.engine
-    region         = local.request.region
+    engine         = var.engine
+    region         = var.region
     nodes = {
       for role, node in aws_instance.node : role => {
         instance_id = node.id

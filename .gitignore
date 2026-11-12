@@ -29,9 +29,9 @@ infrastructure/packer/manifest-*.json.lock
 .tools/
 infrastructure/observability/prometheus/targets/tenant-*.json
 # Motor Terraform/OpenTofu (integrante 2): estado, datos de trabajo e inventarios por tenant
-infrastructure/terraform/state/
+infrastructure/terraform/terraform.tfstate.d/
 infrastructure/terraform/.work/
-infrastructure/opentofu/state/
+infrastructure/opentofu/terraform.tfstate.d/
 infrastructure/opentofu/.work/
 # Lockfile del módulo: solo lo usan las pruebas; las raíces versionan el suyo
 infrastructure/terraform/modules/tenant/.terraform.lock.hcl

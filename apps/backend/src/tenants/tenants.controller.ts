@@ -1,13 +1,42 @@
-import { Controller, Get } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, Post } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Tenant } from '../database/entities';
+import { TenantsService } from './tenants.service';
 
 @Controller('tenants')
 export class TenantsController {
-  constructor(@InjectRepository(Tenant) private readonly repository: Repository<Tenant>) {}
+  constructor(@InjectRepository(Tenant) private readonly repository: Repository<Tenant>, private readonly tenants: TenantsService) {}
+
   @Get() async list() {
     return { data: await this.repository.find({ select: ['slug', 'name', 'plan_slug', 'environment', 'region', 'engine', 'status', 'access_url'], order: { created_at: 'DESC' } }),
       meta: { creation_enabled: false, owner: 'integrantes-2-y-5' } };
+  }
+
+  /**
+   * Integrante 2 (RF-07): valida identificador y correo. 200 con valid=true/false y un error por campo;
+   * 400 solo si el cuerpo no es un objeto JSON.
+   */
+  @Post('validate') @HttpCode(200)
+  async validate(@Body() body: unknown) {
+    return { data: await this.tenants.validate(body) };
+  }
+
+  /**
+   * Integrante 2: guarda el borrador del Paso 1 con status PENDING. No aprovisiona (creation_enabled sigue en false).
+   * 201 con el id; 422 con un error por campo; 400 si el cuerpo no es un objeto JSON.
+   */
+  @Post('drafts') @HttpCode(201)
+  async createDraft(@Body() body: unknown) {
+    return { data: await this.tenants.createDraft(body) };
+  }
+
+  /**
+   * Integrante 2: genera output/tenants/<slug>/terraform.tfvars.json para Terraform/OpenTofu.
+   * 404 si no existe, 409 si ya no es borrador (PENDING), 422 si el motor es de otro integrante o faltan AMIs.
+   */
+  @Post(':slug/tfvars') @HttpCode(200)
+  async generateTfvars(@Param('slug') slug: string) {
+    return { data: await this.tenants.generateTfvars(slug) };
   }
 }

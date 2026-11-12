@@ -1,5 +1,5 @@
 # Pruebas offline del módulo: proveedores simulados, sin credenciales ni recursos reales.
-# Ejecutar desde infrastructure/terraform:  terraform init -backend=false && terraform test
+# Ejecutar desde infrastructure/terraform/modules/tenant:  terraform init -backend=false && terraform test
 
 mock_provider "aws" {
   override_data {
@@ -26,15 +26,41 @@ mock_provider "aws" {
 
 mock_provider "local" {}
 
+# Mismas entradas que genera POST /api/tenants/:slug/tfvars para un tenant del plan Estándar.
 variables {
-  request_file         = "tests/fixtures/request.json"
-  expected_account_id  = "123456789012"
+  tenant_id   = "i2-fixture"
+  tenant_name = "Instituto Fixture"
+  plan_type   = "estandar"
+  plan_capacity = {
+    frontend = { instance_type = "t3.micro", disk_gib = 16 }
+    backend  = { instance_type = "t3.small", disk_gib = 20 }
+    database = { instance_type = "t3.small", disk_gib = 40 }
+  }
+  region               = "us-east-1"
+  frontend_ami_id      = "ami-0aaaaaaaaaaaaaaa1"
+  backend_ami_id       = "ami-0bbbbbbbbbbbbbbb2"
+  database_ami_id      = "ami-0ccccccccccccccc3"
+  request_id           = "00000000-0000-4000-8000-000000000001"
   ssh_ingress_cidrs    = ["203.0.113.10/32"]
   inventory_dir        = "tests/.out"
   ssh_private_key_path = "/home/operador/.ssh/practico7-asistencia.pem"
 }
 
-run "plan_estandar_usa_capacidades_del_snapshot" {
+# Primero: user_data tiene ignore_changes (no reinicia servidores reales), y las ejecuciones comparten estado.
+run "cloud_init_con_llaves_publicas" {
+  command = apply
+
+  variables {
+    ssh_authorized_keys = ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOperadorOperadorOperadorOperadorOperadorOp operador"]
+  }
+
+  assert {
+    condition     = strcontains(aws_instance.node["backend"].user_data, "ssh_authorized_keys:\n  - \"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5")
+    error_message = "Las llaves públicas deben inyectarse como lista YAML entre comillas."
+  }
+}
+
+run "plan_estandar_usa_capacidades_del_plan" {
   command = apply
 
   assert {
@@ -52,6 +78,23 @@ run "plan_estandar_usa_capacidades_del_snapshot" {
   assert {
     condition     = aws_subnet.public.availability_zone == "us-east-1a"
     error_message = "Debe elegirse la zona que ofrece todos los tipos del plan."
+  }
+  assert {
+    condition     = aws_instance.node["backend"].tags["Name"] == "i2-fixture-backend" && aws_instance.node["backend"].key_name == "practico7-asistencia"
+    error_message = "Nombre por tenant_id y key pair esperados."
+  }
+}
+
+run "cloud_init_del_integrante_1" {
+  command = apply
+
+  assert {
+    condition     = strcontains(aws_instance.node["frontend"].user_data, "hostname: i2-fixture-frontend") && strcontains(aws_instance.node["database"].user_data, "pg_createcluster")
+    error_message = "Cada instancia debe recibir el cloud-init de su rol con el tenant_id."
+  }
+  assert {
+    condition     = alltrue([for n in aws_instance.node : !strcontains(n.user_data, "__") && !strcontains(n.user_data, "\r") && strcontains(n.user_data, "timezone: America/La_Paz")])
+    error_message = "El cloud-init no debe dejar marcadores sin reemplazar ni retornos de carro."
   }
 }
 
@@ -73,10 +116,6 @@ run "seguridad_basica_de_instancias" {
   assert {
     condition     = aws_instance.node["backend"].subnet_id == aws_subnet.private.id && aws_instance.node["database"].subnet_id == aws_subnet.private.id && aws_instance.node["frontend"].subnet_id == aws_subnet.public.id
     error_message = "Backend y base de datos deben estar en la subred privada."
-  }
-  assert {
-    condition     = strcontains(aws_instance.node["database"].user_data, "pg_createcluster") && strcontains(aws_instance.node["frontend"].user_data, "hostname: i2-fixture-frontend")
-    error_message = "Cada instancia debe recibir el cloud-init de su rol."
   }
 }
 
@@ -113,15 +152,15 @@ run "inventario_y_provisioning_result" {
     error_message = "El inventario debe tener los tres grupos y el salto por el bastión."
   }
   assert {
-    condition     = strcontains(local_file.inventory.content, "ansible_ssh_private_key_file=/home/operador/.ssh/practico7-asistencia.pem") && !strcontains(local_file.inventory.content, "PRIVATE KEY")
-    error_message = "El inventario solo debe contener la ruta de la clave."
+    condition     = strcontains(local_file.inventory.content, "ansible_ssh_private_key_file=/home/operador/.ssh/practico7-asistencia.pem") && !strcontains(local_file.inventory.content, "PRIVATE KEY") && !strcontains(local_file.inventory.content, "\r")
+    error_message = "El inventario solo debe contener la ruta de la clave y usar LF."
   }
   assert {
     condition     = local_file.inventory.filename == "tests/.out/i2-fixture/hosts.ini" && local_file.inventory.file_permission == "0600"
     error_message = "Ruta o permisos del inventario incorrectos."
   }
   assert {
-    condition     = output.provisioning_result.schema_version == 1 && output.provisioning_result.engine == "terraform" && output.provisioning_result.nodes["database"].public_ip == null && output.provisioning_result.nodes["backend"].public_ip == null
+    condition     = output.provisioning_result.schema_version == 1 && output.provisioning_result.engine == "terraform" && output.provisioning_result.request_id == "00000000-0000-4000-8000-000000000001" && output.provisioning_result.nodes["database"].public_ip == null && output.provisioning_result.nodes["backend"].public_ip == null
     error_message = "ProvisioningResult no cumple el contrato."
   }
   assert {
@@ -148,28 +187,48 @@ run "nat_opcional_y_exporters" {
   }
 }
 
-run "rechaza_borrador_no_desplegable" {
+run "rechaza_plan_inexistente" {
   command = plan
   variables {
-    request_file = "tests/fixtures/draft.json"
+    plan_type = "premium"
   }
-  expect_failures = [var.request_file]
+  expect_failures = [var.plan_type]
+}
+
+run "rechaza_disco_menor_que_la_ami" {
+  command = plan
+  variables {
+    plan_capacity = {
+      frontend = { instance_type = "t3.micro", disk_gib = 10 }
+      backend  = { instance_type = "t3.small", disk_gib = 20 }
+      database = { instance_type = "t3.small", disk_gib = 40 }
+    }
+  }
+  expect_failures = [var.plan_capacity]
+}
+
+run "rechaza_ami_invalida" {
+  command = plan
+  variables {
+    database_ami_id = "ubuntu-generica"
+  }
+  expect_failures = [var.database_ami_id]
 }
 
 run "rechaza_motor_de_otro_integrante" {
   command = plan
   variables {
-    request_file = "tests/fixtures/pulumi.json"
+    engine = "pulumi"
   }
-  expect_failures = [var.request_file]
+  expect_failures = [var.engine]
 }
 
-run "rechaza_imagen_de_otra_region" {
+run "rechaza_tenant_id_invalido" {
   command = plan
   variables {
-    request_file = "tests/fixtures/wrong-region.json"
+    tenant_id = "Colegio Demo"
   }
-  expect_failures = [var.request_file]
+  expect_failures = [var.tenant_id]
 }
 
 run "rechaza_ssh_abierto_a_internet" {

@@ -2,7 +2,8 @@
 terraform {
   required_version = ">= 1.7.0"
 
-  # Estado local por tenant: scripts/terraform_tenant.py pasa -backend-config=path=state/<tenant>/terraform.tfstate
+  # Estado aislado por tenant con workspaces: tofu workspace new <tenant_id>.
+  # Backend local: cada workspace guarda su estado en terraform.tfstate.d/<tenant_id>/ (ignorado por Git).
   backend "local" {}
 
   required_providers {
@@ -17,13 +18,8 @@ terraform {
   }
 }
 
-locals {
-  # try(): si la solicitud es inválida, el error claro lo da la validación del módulo.
-  request = try(jsondecode(file(var.request_file)), {})
-}
-
 provider "aws" {
-  region = try(local.request.region, "us-east-1")
+  region = var.region
 
   # Ninguna operación se ejecuta si las credenciales pertenecen a otra cuenta.
   allowed_account_ids = [var.expected_account_id]
@@ -32,10 +28,10 @@ provider "aws" {
     tags = {
       Project   = "proyecto-modulo-2"
       MemberId  = var.member_id
-      TenantId  = try(local.request.tenant_slug, "invalido")
-      RunId     = try(local.request.request_id, "invalido")
-      Plan      = try(local.request.plan_snapshot.slug, "invalido")
-      ManagedBy = try(local.request.engine, "invalido")
+      TenantId  = var.tenant_id
+      RunId     = var.request_id != "" ? var.request_id : var.tenant_id
+      Plan      = var.plan_type
+      ManagedBy = var.engine
     }
   }
 }

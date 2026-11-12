@@ -1,0 +1,5 @@
+{
+  "schema_version": 1,
+  "images": [],
+  "note": "No hay AMIs construidas todavía. Publicar resultados reales con scripts/import_packer_manifest.py; nunca inventar identificadores."
+}

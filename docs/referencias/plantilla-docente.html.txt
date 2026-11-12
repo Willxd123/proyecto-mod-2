@@ -1,0 +1,1220 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tenant Control Center — Plataforma Multi-Tenant de Asistencia</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: #f8fafc;
+            color: #1e293b;
+        }
+        .mono {
+            font-family: 'JetBrains Mono', monospace;
+        }
+        .sidebar-bg {
+            background-color: #0b253c;
+        }
+        .sidebar-item-active {
+            background-color: #13395b;
+            border-right: 3px solid #2b8cee;
+            color: #ffffff;
+        }
+        .plan-card-selected {
+            border: 2px solid #0b6bcb !important;
+            background-color: #f4f9ff !important;
+        }
+        .step-line {
+            height: 1px;
+            background-color: #cbd5e1;
+            flex: 1;
+            margin: 0 12px;
+        }
+        .rf-badge {
+            font-size: 10px;
+            font-weight: 700;
+            padding: 2px 7px;
+            border-radius: 9999px;
+            background-color: #e0f2fe;
+            color: #0369a1;
+            border: 1px solid #bae6fd;
+            white-space: nowrap;
+        }
+    </style>
+</head>
+<body class="h-screen flex overflow-hidden select-none sm:select-auto">
+
+    <!-- BARRA LATERAL IZQUIERDA (Fiel al Mockup del Docente + Mapeo RF) -->
+    <aside class="w-60 sidebar-bg text-slate-300 flex flex-col justify-between flex-shrink-0">
+        <div>
+            <!-- Logo Header -->
+            <div class="px-5 py-5 flex items-center gap-3 border-b border-slate-700/50">
+                <div class="w-8 h-8 rounded-lg bg-[#0d74e7] flex items-center justify-center text-white font-bold text-lg">
+                    <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 3L4 20h3.5l1.8-4h5.4l1.8 4H20L12 3z" />
+                    </svg>
+                </div>
+                <div class="leading-tight">
+                    <div class="text-white font-semibold text-sm tracking-tight">Tenant</div>
+                    <div class="text-[10px] text-slate-400 tracking-widest uppercase font-medium">CONTROL CENTER</div>
+                </div>
+            </div>
+
+            <!-- Sección PLATAFORMA -->
+            <div class="mt-5">
+                <div class="px-5 text-[10px] font-semibold uppercase tracking-wider text-slate-400/80 mb-2">
+                    PLATAFORMA
+                </div>
+                <nav class="space-y-0.5 text-xs font-medium">
+                    <button onclick="switchMainView('dashboard')" id="nav-dashboard" class="w-full flex items-center gap-3 px-5 py-2.5 text-slate-300 hover:bg-slate-800/50 transition">
+                        <svg class="w-4 h-4 opacity-80" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 6h16M4 10h16M4 14h16M4 18h16"/></svg>
+                        <span>Inicio / Lista Tenants</span>
+                        <span id="badge-tenants-count" class="ml-auto bg-sky-500/20 text-sky-300 px-1.5 py-0.5 rounded text-[10px]">3</span>
+                    </button>
+                    <button onclick="switchMainView('create')" id="nav-create" class="w-full flex items-center gap-3 px-5 py-2.5 sidebar-item-active transition">
+                        <svg class="w-4 h-4 text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
+                        <span>Tenants (Crear)</span>
+                    </button>
+                    <button onclick="switchMainView('plans')" id="nav-plans" class="w-full flex items-center gap-3 px-5 py-2.5 text-slate-300 hover:bg-slate-800/50 transition">
+                        <svg class="w-4 h-4 opacity-80" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                        <span>Planes y Golden AMIs</span>
+                    </button>
+                    <button onclick="switchMainView('monitoring')" id="nav-monitoring" class="w-full flex items-center gap-3 px-5 py-2.5 text-slate-300 hover:bg-slate-800/50 transition">
+                        <svg class="w-4 h-4 opacity-80" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                        <span>Monitoreo (Grafana)</span>
+                    </button>
+                    <button onclick="switchMainView('security')" id="nav-security" class="w-full flex items-center gap-3 px-5 py-2.5 text-slate-300 hover:bg-slate-800/50 transition">
+                        <svg class="w-4 h-4 opacity-80" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                        <span>Escáner &amp; Versiones</span>
+                    </button>
+                </nav>
+            </div>
+
+            <!-- Sección ADMINISTRACIÓN -->
+            <div class="mt-7">
+                <div class="px-5 text-[10px] font-semibold uppercase tracking-wider text-slate-400/80 mb-2">
+                    ADMINISTRACIÓN
+                </div>
+                <nav class="space-y-0.5 text-xs font-medium">
+                    <button onclick="switchMainView('team-guide')" id="nav-team-guide" class="w-full flex items-center gap-3 px-5 py-2.5 text-amber-300 hover:bg-slate-800/50 transition">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                        <span>Guía 6 Roles y RFs</span>
+                    </button>
+                </nav>
+            </div>
+        </div>
+
+        <!-- Perfil de Usuario Inferior -->
+        <div class="p-4 border-t border-slate-700/60 flex items-center gap-3">
+            <div class="w-8 h-8 rounded-full bg-sky-100 text-[#0b253c] font-bold text-xs flex items-center justify-center">
+                CU
+            </div>
+            <div class="leading-tight">
+                <div class="text-xs font-semibold text-white">Carlos U.</div>
+                <div class="text-[11px] text-slate-400">Administrador</div>
+            </div>
+        </div>
+    </aside>
+
+    <!-- CONTENEDOR PRINCIPAL DERECHO -->
+    <div class="flex-1 flex flex-col h-screen overflow-hidden">
+
+        <!-- BARRA SUPERIOR -->
+        <header class="h-14 bg-white border-b border-slate-200 px-8 flex items-center justify-between flex-shrink-0">
+            <div class="text-xs font-medium text-slate-400 flex items-center gap-2">
+                <span class="hover:text-slate-600 cursor-pointer" onclick="switchMainView('dashboard')">Tenants</span>
+                <span>/</span>
+                <span id="top-breadcrumb-current" class="text-slate-800 font-semibold">Crear tenant</span>
+            </div>
+            <div class="flex items-center gap-3">
+                <span class="hidden md:inline-flex items-center gap-1.5 text-[11px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-1 rounded-full font-medium">
+                    <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+                    Control Center Local → Aprovisionando en AWS / Azure
+                </span>
+                <button onclick="switchMainView('create')" title="Nuevo Tenant" class="w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center text-sm font-bold transition">
+                    +
+                </button>
+                <div class="w-7 h-7 rounded-full bg-sky-100 text-[#0b253c] text-[11px] font-bold flex items-center justify-center">
+                    CU
+                </div>
+            </div>
+        </header>
+
+        <!-- ÁREA DE CONTENIDO CON SCROLL -->
+        <main class="flex-1 overflow-y-auto px-8 py-6">
+
+            <!-- =================================================================== -->
+            <!-- VISTA 1: CREAR TENANT (Fiel al Mockup + Etiquetas RF por Paso)      -->
+            <!-- =================================================================== -->
+            <section id="view-create" class="max-w-6xl mx-auto">
+                <div class="mb-5 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div>
+                        <h1 class="text-2xl font-bold text-slate-900 tracking-tight">Crear tenant</h1>
+                        <p class="text-xs text-slate-500 mt-1">
+                            Configura una nueva institución y prepara su entorno de registro de asistencia.
+                        </p>
+                    </div>
+                    <div class="flex flex-wrap gap-1.5">
+                        <span class="rf-badge">RF-01 a RF-03</span>
+                        <span class="rf-badge">RF-07 a RF-11</span>
+                        <span class="rf-badge">RF-13</span>
+                    </div>
+                </div>
+
+                <!-- Indicador de Pasos (Paso 1 de 3) -->
+                <div class="mb-6">
+                    <div id="step-counter-label" class="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-2">
+                        PASO 1 DE 3
+                    </div>
+                    <div class="flex items-center text-xs font-medium">
+                        <button onclick="goToCreateStep(1)" class="flex items-center gap-2 text-slate-900 font-semibold">
+                            <span id="step-circle-1" class="w-5 h-5 rounded-full bg-[#0b6bcb] text-white text-[11px] flex items-center justify-center">1</span>
+                            <span id="step-text-1">Datos y plan (RF-03, RF-07, RF-08)</span>
+                        </button>
+                        <div class="step-line"></div>
+                        <button onclick="goToCreateStep(2)" class="flex items-center gap-2 text-slate-500">
+                            <span id="step-circle-2" class="w-5 h-5 rounded-full border border-slate-300 text-slate-500 text-[11px] flex items-center justify-center">2</span>
+                            <span id="step-text-2">Configuración Packer &amp; Escáner (RF-09, RNF-Seguridad)</span>
+                        </button>
+                        <div class="step-line"></div>
+                        <button onclick="goToCreateStep(3)" class="flex items-center gap-2 text-slate-500">
+                            <span id="step-circle-3" class="w-5 h-5 rounded-full border border-slate-300 text-slate-500 text-[11px] flex items-center justify-center">3</span>
+                            <span id="step-text-3">Revisión y Logs en Vivo (RF-10, RF-11, RF-13)</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- GRID PRINCIPAL: Columna Izquierda (Formulario) + Columna Derecha (Resumen del tenant) -->
+                <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+
+                    <!-- COLUMNA IZQUIERDA (8 columnas) -->
+                    <div class="lg:col-span-8 space-y-6">
+
+                        <!-- PASO 1: DATOS DE LA INSTITUCIÓN, PLAN Y MOTOR (Integrante 2 + Integrante 1) -->
+                        <div id="create-step-1" class="space-y-6">
+                            <!-- Bloque: Datos de la institución (RF-07) -->
+                            <div class="bg-white p-6 rounded-xl border border-slate-200/90">
+                                <div class="flex items-center justify-between">
+                                    <div>
+                                        <h2 class="text-base font-bold text-slate-800">Datos de la institución</h2>
+                                        <p class="text-xs text-slate-400 mt-0.5 mb-5">Identifica al tenant y configura su primer entorno.</p>
+                                    </div>
+                                    <span class="rf-badge">RF-07 · Integrante 2</span>
+                                </div>
+
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-xs font-semibold text-slate-700 mb-1.5">
+                                            Nombre de la institución <span class="text-red-500">*</span>
+                                        </label>
+                                        <input type="text" id="input-inst-name" value="Instituto San Marcos" oninput="syncSummary()"
+                                            placeholder="Ej. Universidad Unifranz / UPSA"
+                                            class="w-full px-3.5 py-2 text-xs bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#0b6bcb]">
+                                    </div>
+
+                                    <div>
+                                        <label class="block text-xs font-semibold text-slate-700 mb-1.5">
+                                            Identificador del tenant <span class="text-red-500">*</span>
+                                        </label>
+                                        <div class="flex items-center border border-slate-300 rounded-lg bg-white overflow-hidden focus-within:border-[#0b6bcb]">
+                                            <input type="text" id="input-tenant-slug" value="san-marcos" oninput="syncSummary()"
+                                                class="w-full px-3.5 py-2 text-xs focus:outline-none">
+                                            <span class="px-3 text-[11px] text-slate-400 bg-slate-50 border-l border-slate-200 py-2">.escuelas.app</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="grid grid-cols-1 md:grid-cols-12 gap-4 mt-4">
+                                    <div class="md:col-span-6">
+                                        <label class="block text-xs font-semibold text-slate-700 mb-1.5">
+                                            Correo del administrador
+                                        </label>
+                                        <input type="email" id="input-admin-email" value="admin@sanmarcos.edu" oninput="syncSummary()"
+                                            class="w-full px-3.5 py-2 text-xs bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#0b6bcb]">
+                                    </div>
+
+                                    <div class="md:col-span-3">
+                                        <label class="block text-xs font-semibold text-slate-700 mb-1.5">
+                                            Región de despliegue
+                                        </label>
+                                        <select id="input-region" onchange="syncSummary()"
+                                            class="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#0b6bcb]">
+                                            <option value="México Central">México Central</option>
+                                            <option value="AWS us-east-1 (N. Virginia)">AWS us-east-1 (N. Virginia)</option>
+                                            <option value="AWS sa-east-1 (São Paulo)">AWS sa-east-1 (São Paulo)</option>
+                                            <option value="Azure East US 2">Azure East US 2</option>
+                                        </select>
+                                    </div>
+
+                                    <div class="md:col-span-3">
+                                        <label class="block text-xs font-semibold text-slate-700 mb-1.5">
+                                            Entorno
+                                        </label>
+                                        <select id="input-env" onchange="syncSummary()"
+                                            class="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#0b6bcb]">
+                                            <option value="Producción" selected>Producción</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Bloque: Selecciona un plan (RF-01, RF-02, RF-03 — Sin RF-19 de respaldos tachado) -->
+                            <div class="bg-white p-6 rounded-xl border border-slate-200/90">
+                                <div class="flex items-center justify-between">
+                                    <div>
+                                        <h2 class="text-base font-bold text-slate-800">Selecciona un plan</h2>
+                                        <p class="text-xs text-slate-400 mt-0.5 mb-5">El plan define la capacidad de cómputo, tamaño de base de datos y límites iniciales del tenant.</p>
+                                    </div>
+                                    <span class="rf-badge">RF-01, RF-02, RF-03 · Int. 1 y 2</span>
+                                </div>
+
+                                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <!-- Plan Básico -->
+                                    <div id="card-plan-Básico" onclick="selectPlan('Básico')"
+                                        class="cursor-pointer rounded-xl border border-slate-200 p-4 transition hover:border-slate-300 bg-white">
+                                        <div class="flex items-center justify-between">
+                                            <span class="text-sm font-bold text-slate-800">Básico</span>
+                                            <span id="badge-plan-Básico" class="hidden text-[9px] font-bold uppercase px-2 py-0.5 rounded bg-sky-100 text-[#0b6bcb]">SELECCIONADO</span>
+                                        </div>
+                                        <p class="text-[11px] text-slate-400 mt-1 mb-3">Para instituciones pequeñas</p>
+                                        <ul class="space-y-1.5 text-[11px] text-slate-600">
+                                            <li class="flex items-center gap-2"><span class="w-1.5 h-1.5 rounded-full bg-slate-400"></span>Hasta 100 estudiantes</li>
+                                            <li class="flex items-center gap-2"><span class="w-1.5 h-1.5 rounded-full bg-slate-400"></span>Base de datos: 10 GB</li>
+                                            <li class="flex items-center gap-2"><span class="w-1.5 h-1.5 rounded-full bg-slate-400"></span>3 VMs: t3.micro (1 vCPU, 1 GB)</li>
+                                            <li class="flex items-center gap-2"><span class="w-1.5 h-1.5 rounded-full bg-slate-400"></span>Red y Security Group aislados</li>
+                                        </ul>
+                                    </div>
+
+                                    <!-- Plan Estándar -->
+                                    <div id="card-plan-Estándar" onclick="selectPlan('Estándar')"
+                                        class="cursor-pointer rounded-xl border border-slate-200 p-4 transition plan-card-selected">
+                                        <div class="flex items-center justify-between">
+                                            <span class="text-sm font-bold text-slate-900">Estándar</span>
+                                            <span id="badge-plan-Estándar" class="text-[9px] font-bold uppercase px-2 py-0.5 rounded bg-sky-100 text-[#0b6bcb]">SELECCIONADO</span>
+                                        </div>
+                                        <p class="text-[11px] text-slate-500 mt-1 mb-3">Para instituciones en crecimiento</p>
+                                        <ul class="space-y-1.5 text-[11px] text-slate-700 font-medium">
+                                            <li class="flex items-center gap-2"><span class="w-1.5 h-1.5 rounded-full bg-[#0b6bcb]"></span>Hasta 1,000 estudiantes</li>
+                                            <li class="flex items-center gap-2"><span class="w-1.5 h-1.5 rounded-full bg-[#0b6bcb]"></span>Base de datos: 50 GB</li>
+                                            <li class="flex items-center gap-2"><span class="w-1.5 h-1.5 rounded-full bg-[#0b6bcb]"></span>3 VMs: t3.small (2 vCPU, 2 GB)</li>
+                                            <li class="flex items-center gap-2"><span class="w-1.5 h-1.5 rounded-full bg-[#0b6bcb]"></span>Red y Security Group aislados</li>
+                                        </ul>
+                                    </div>
+
+                                    <!-- Plan Avanzado -->
+                                    <div id="card-plan-Avanzado" onclick="selectPlan('Avanzado')"
+                                        class="cursor-pointer rounded-xl border border-slate-200 p-4 transition hover:border-slate-300 bg-white">
+                                        <div class="flex items-center justify-between">
+                                            <span class="text-sm font-bold text-slate-800">Avanzado</span>
+                                            <span id="badge-plan-Avanzado" class="hidden text-[9px] font-bold uppercase px-2 py-0.5 rounded bg-sky-100 text-[#0b6bcb]">SELECCIONADO</span>
+                                        </div>
+                                        <p class="text-[11px] text-slate-400 mt-1 mb-3">Para alta demanda (Universidades)</p>
+                                        <ul class="space-y-1.5 text-[11px] text-slate-600">
+                                            <li class="flex items-center gap-2"><span class="w-1.5 h-1.5 rounded-full bg-slate-400"></span>Hasta 5,000 estudiantes</li>
+                                            <li class="flex items-center gap-2"><span class="w-1.5 h-1.5 rounded-full bg-slate-400"></span>Base de datos: 200 GB</li>
+                                            <li class="flex items-center gap-2"><span class="w-1.5 h-1.5 rounded-full bg-slate-400"></span>3 VMs: t3.medium (2 vCPU, 4 GB)</li>
+                                            <li class="flex items-center gap-2"><span class="w-1.5 h-1.5 rounded-full bg-slate-400"></span>Red y Security Group aislados</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Bloque: Motor de infraestructura (RF-08) -->
+                            <div class="bg-white p-6 rounded-xl border border-slate-200/90 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                                <div>
+                                    <div class="flex items-center gap-2">
+                                        <h2 class="text-base font-bold text-slate-800">Motor de infraestructura</h2>
+                                        <span class="rf-badge">RF-08 · Int. 2 y 3</span>
+                                    </div>
+                                    <p class="text-xs text-slate-400 mt-0.5">Elige la herramienta que aprovisionará los recursos de este tenant.</p>
+                                    <div class="flex items-center gap-2 mt-3 text-xs text-emerald-700 font-medium">
+                                        <svg class="w-4 h-4 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                                        <span>Base de datos aislada por institución (RNF-Aislamiento)</span>
+                                    </div>
+                                </div>
+
+                                <div class="w-full md:w-72 border border-slate-300 rounded-lg px-3.5 py-2 bg-white">
+                                    <label class="block text-[10px] font-semibold uppercase tracking-wider text-slate-400">MOTOR DE IaC</label>
+                                    <select id="input-iac-engine" onchange="syncSummary()" class="w-full text-xs font-semibold text-slate-800 focus:outline-none bg-transparent mt-0.5">
+                                        <option value="Terraform">Terraform (Motor Principal - Int. 2)</option>
+                                        <option value="OpenTofu">OpenTofu (Motor Principal - Int. 2)</option>
+                                        <option value="Pulumi">Pulumi (2do Motor - Int. 3)</option>
+                                        <option value="CloudFormation">CloudFormation (2do Motor - Int. 3)</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- PASO 2: GOLDEN IMAGES DE PACKER, CLOUD-INIT Y ESCÁNER DEVSECOPS (Int. 1 y Int. 3) -->
+                        <div id="create-step-2" class="hidden space-y-6">
+                            <div class="bg-white p-6 rounded-xl border border-slate-200">
+                                <div class="flex items-center justify-between mb-4">
+                                    <div>
+                                        <h2 class="text-base font-bold text-slate-800">Imágenes Preconfiguradas con Packer (Golden Images) + cloud-init</h2>
+                                        <p class="text-xs text-slate-500">Las 3 máquinas virtuales se crean a partir de nuestras AMIs propias con dependencias preinstaladas.</p>
+                                    </div>
+                                    <span class="rf-badge">RF-09, RF-13 · Integrante 1</span>
+                                </div>
+
+                                <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+                                    <div class="p-3.5 rounded-lg bg-slate-50 border border-slate-200">
+                                        <div class="font-bold text-slate-800">1. Servidor Frontend</div>
+                                        <div class="mono text-[11px] text-sky-700 mt-1">ami-0a91f8c32frontend</div>
+                                        <div class="text-[11px] text-slate-500 mt-1">Ubuntu 22.04 + Nginx + Node 20 + Node Exporter preinstalados con Packer.</div>
+                                    </div>
+                                    <div class="p-3.5 rounded-lg bg-slate-50 border border-slate-200">
+                                        <div class="font-bold text-slate-800">2. Servidor Backend</div>
+                                        <div class="mono text-[11px] text-sky-700 mt-1">ami-0b72d4e19backend</div>
+                                        <div class="text-[11px] text-slate-500 mt-1">Ubuntu 22.04 + Runtime API + PM2 + cloud-init (Swap 2 GB y SSH).</div>
+                                    </div>
+                                    <div class="p-3.5 rounded-lg bg-slate-50 border border-slate-200">
+                                        <div class="font-bold text-slate-800">3. Servidor Base de Datos</div>
+                                        <div class="mono text-[11px] text-sky-700 mt-1">ami-0c54e1a88postgres</div>
+                                        <div class="text-[11px] text-slate-500 mt-1">Ubuntu 22.04 + PostgreSQL 15 en subred privada + Postgres Exporter.</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Escáner de Seguridad Pre-Despliegue -->
+                            <div class="bg-white p-6 rounded-xl border border-slate-200">
+                                <div class="flex items-center justify-between mb-3">
+                                    <div>
+                                        <h2 class="text-base font-bold text-slate-800">Escáner de Seguridad y Secretos Expuestos (Pre-Deploy)</h2>
+                                        <p class="text-xs text-slate-500">Verifica antes de aprovisionar que no existan credenciales ni llaves hardcodeadas en los archivos de código.</p>
+                                    </div>
+                                    <span class="rf-badge">RF-11, RNF-Seguridad · Integrante 3</span>
+                                </div>
+
+                                <div class="flex flex-wrap items-center gap-3 mb-4">
+                                    <button onclick="runSecurityScan(false)" class="px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold transition">
+                                        Ejecutar Escáner (Código Limpio)
+                                    </button>
+                                    <button onclick="runSecurityScan(true)" class="px-3.5 py-2 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold transition">
+                                        Simular Credencial Expuesta (Demostración Video)
+                                    </button>
+                                </div>
+
+                                <div id="security-scan-output" class="mono text-[11px] p-4 rounded-lg bg-slate-900 text-emerald-400 leading-relaxed">
+                                    [READY] Escáner tfsec + detector de secretos + Ansible Vault listo. Haz clic en "Ejecutar Escáner" antes de pasar al Paso 3.
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- PASO 3: CONSOLA DE APROVISIONAMIENTO EN SEGUNDO PLANO (RF-10, RF-11 y RF-13) -->
+                        <div id="create-step-3" class="hidden space-y-6">
+                            <div class="bg-white p-6 rounded-xl border border-slate-200">
+                                <div class="flex items-center justify-between mb-4">
+                                    <div>
+                                        <h2 class="text-base font-bold text-slate-800">Consola de Aprovisionamiento en Segundo Plano (Logs en Pantalla)</h2>
+                                        <p class="text-xs text-slate-500">Muestra el log en vivo de la ejecución (Escáner → Packer AMI → Motor IaC → cloud-init → Ansible → Grafana) sin necesidad de guardarlo en BD.</p>
+                                    </div>
+                                    <div class="flex items-center gap-2">
+                                        <span class="rf-badge">RF-10, RF-11, RF-13 · Int. 4 y 5</span>
+                                        <span id="deploy-status-pill" class="text-xs px-3 py-1 rounded-full font-semibold bg-slate-100 text-slate-700">
+                                            Listo
+                                        </span>
+                                    </div>
+                                </div>
+
+                                <!-- Versiones registradas (RF-13) -->
+                                <div class="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4 text-[11px]">
+                                    <div class="p-2.5 bg-slate-50 rounded border border-slate-200">
+                                        <span class="text-slate-400 block">App Asistencia (RF-13)</span>
+                                        <span class="font-bold text-slate-800 mono">v2.4.0-prod</span>
+                                    </div>
+                                    <div class="p-2.5 bg-slate-50 rounded border border-slate-200">
+                                        <span class="text-slate-400 block">Golden AMIs (RF-13)</span>
+                                        <span class="font-bold text-slate-800 mono">Packer v1.11.2</span>
+                                    </div>
+                                    <div class="p-2.5 bg-slate-50 rounded border border-slate-200">
+                                        <span class="text-slate-400 block">Motor IaC (RF-13)</span>
+                                        <span id="version-iac-label" class="font-bold text-slate-800 mono">Terraform v1.9.5</span>
+                                    </div>
+                                    <div class="p-2.5 bg-slate-50 rounded border border-slate-200">
+                                        <span class="text-slate-400 block">Config &amp; Monitoreo</span>
+                                        <span class="font-bold text-slate-800 mono">Ansible 2.17 + Grafana 11</span>
+                                    </div>
+                                </div>
+
+                                <!-- Terminal de Logs en Pantalla -->
+                                <div id="live-deploy-console" class="mono text-[11px] bg-slate-950 text-slate-200 p-4 rounded-xl h-64 overflow-y-auto space-y-1 border border-slate-800">
+                                    <div class="text-slate-400"># Listo para iniciar el trabajo en segundo plano (RF-11)...</div>
+                                    <div class="text-sky-400">$ ./orchestrator.sh --tenant="san-marcos" --plan="Estándar" --engine="Terraform"</div>
+                                </div>
+
+                                <div class="mt-4 flex items-center justify-between">
+                                    <button onclick="startFullProvisioning()" id="btn-launch-provision" class="px-5 py-2.5 rounded-lg bg-[#0b6bcb] hover:bg-sky-700 text-white text-xs font-semibold transition">
+                                        Iniciar Aprovisionamiento en 2do Plano
+                                    </button>
+                                    <button onclick="switchMainView('dashboard')" class="text-xs text-[#0b6bcb] font-semibold hover:underline">
+                                        Ver en Lista de Tenants (RF-14) →
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+
+                    <!-- COLUMNA DERECHA: RESUMEN DEL TENANT (4 columnas — Fiel al Mockup y sin RF-19) -->
+                    <div class="lg:col-span-4 bg-white p-6 rounded-xl border border-slate-200/90 space-y-5">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <h2 class="text-base font-bold text-slate-800">Resumen del tenant</h2>
+                                <p class="text-xs text-slate-400 mt-0.5">Se aprovisionará al confirmar.</p>
+                            </div>
+                            <span class="rf-badge">RF-03</span>
+                        </div>
+
+                        <!-- Caja Institución -->
+                        <div class="p-4 rounded-xl bg-[#f8fafc] border border-slate-200/80">
+                            <div class="text-[10px] font-semibold uppercase tracking-wider text-slate-400">INSTITUCIÓN</div>
+                            <div id="summary-inst-name" class="text-sm font-bold text-slate-900 mt-1">Instituto San Marcos</div>
+                            <div id="summary-tenant-url" class="text-xs text-slate-400 mt-0.5">san-marcos.escuelas.app</div>
+                        </div>
+
+                        <!-- Plan seleccionado -->
+                        <div class="flex items-center justify-between text-xs border-b border-slate-100 pb-3">
+                            <span class="text-slate-500">Plan seleccionado</span>
+                            <span id="summary-plan" class="font-bold text-slate-900">Estándar</span>
+                        </div>
+
+                        <!-- Recursos incluidos (RF-09, RF-25) -->
+                        <div>
+                            <div class="text-xs font-semibold text-slate-700 mb-2.5">Recursos incluidos (RF-09)</div>
+                            <ul class="space-y-2 text-xs text-slate-600">
+                                <li class="flex items-center gap-2.5">
+                                    <span class="w-2 h-2 rounded-full bg-emerald-600"></span>
+                                    <span>Frontend y API Backend (Golden AMIs Packer)</span>
+                                </li>
+                                <li class="flex items-center gap-2.5">
+                                    <span class="w-2 h-2 rounded-full bg-emerald-600"></span>
+                                    <span id="summary-db-size">Base de datos aislada (50 GB)</span>
+                                </li>
+                                <li class="flex items-center gap-2.5">
+                                    <span class="w-2 h-2 rounded-full bg-emerald-600"></span>
+                                    <span>Configuración automática con cloud-init y Ansible</span>
+                                </li>
+                                <li class="flex items-center gap-2.5">
+                                    <span class="w-2 h-2 rounded-full bg-emerald-600"></span>
+                                    <span>Monitoreo en Grafana (RF-25)</span>
+                                </li>
+                            </ul>
+                        </div>
+
+                        <!-- Aislamiento y seguridad -->
+                        <div>
+                            <div class="text-xs font-semibold text-slate-700 mb-2">Aislamiento y seguridad</div>
+                            <div class="p-3.5 rounded-lg bg-slate-50 border border-slate-200/80 flex items-start gap-2.5 text-[11px] text-slate-600">
+                                <svg class="w-4 h-4 text-emerald-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>
+                                <span>Los datos de este tenant quedan separados de otras instituciones en su propia BD y Security Group.</span>
+                            </div>
+                        </div>
+
+                        <!-- Entorno y región -->
+                        <div class="pt-1">
+                            <div class="text-xs font-semibold text-slate-700 mb-1.5">Entorno y región</div>
+                            <div class="flex items-center justify-between text-xs text-slate-600">
+                                <span id="summary-env">Producción</span>
+                                <span id="summary-region" class="font-medium text-slate-700">México Central</span>
+                            </div>
+                            <div class="flex items-center justify-between text-xs text-slate-600 mt-1">
+                                <span>Motor de IaC (RF-08)</span>
+                                <span id="summary-engine" class="font-semibold text-[#0b6bcb]">Terraform</span>
+                            </div>
+                        </div>
+
+                        <!-- Alerta amarilla informativa idéntica al mockup -->
+                        <div class="p-3.5 rounded-lg bg-amber-50/90 border border-amber-200/80 flex items-start gap-2.5 text-[11px] text-amber-800">
+                            <span class="w-2.5 h-2.5 rounded-full bg-amber-500 flex-shrink-0 mt-1"></span>
+                            <span>La creación puede tardar varios minutos. Podrás seguir el progreso desde Tenants (RF-11).</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- BARRA INFERIOR DE ACCIONES -->
+                <div class="mt-8 pt-4 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-4">
+                    <span class="text-xs text-slate-400">Los recursos se crean según el plan seleccionado.</span>
+                    <div class="flex items-center gap-3">
+                        <button onclick="switchMainView('dashboard')" class="px-5 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-xs font-semibold text-slate-700 transition">
+                            Cancelar
+                        </button>
+                        <button onclick="nextCreateStep()" id="btn-continue-step" class="px-6 py-2 rounded-lg bg-[#0b6bcb] hover:bg-sky-700 text-xs font-semibold text-white transition flex items-center gap-2">
+                            <span>Continuar</span>
+                            <span>→</span>
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- =================================================================== -->
+            <!-- VISTA 2: LISTA Y CICLO DE VIDA DE TENANTS (RF-14 a RF-18 · Int. 5)  -->
+            <!-- =================================================================== -->
+            <section id="view-dashboard" class="hidden max-w-6xl mx-auto space-y-6">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div>
+                        <div class="flex items-center gap-2">
+                            <h1 class="text-2xl font-bold text-slate-900">Lista y Ciclo de Vida de Tenants</h1>
+                            <span class="rf-badge">RF-14, RF-15, RF-16, RF-17, RF-18 · Integrante 5</span>
+                        </div>
+                        <p class="text-xs text-slate-500 mt-1">
+                            Permite consultar tenants por nombre/estado/plan (RF-14), actualizar el nombre (RF-15), suspender apagando VMs para reducir costos (RF-16/17), reanudar y eliminar con confirmación (RF-18).
+                        </p>
+                    </div>
+                    <button onclick="switchMainView('create')" class="px-4 py-2.5 rounded-lg bg-[#0b6bcb] hover:bg-sky-700 text-white text-xs font-semibold transition flex items-center gap-2 self-start">
+                        <span>+ Crear nuevo tenant (RF-07)</span>
+                    </button>
+                </div>
+
+                <!-- Barra de filtros (RF-14) -->
+                <div class="bg-white p-4 rounded-xl border border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-4">
+                    <div class="flex flex-wrap items-center gap-3 w-full sm:w-auto">
+                        <input type="text" id="search-tenant-input" oninput="renderTenantsTable()" placeholder="Buscar por nombre o identificador (RF-14)..."
+                            class="w-full sm:w-72 px-3.5 py-2 text-xs border border-slate-300 rounded-lg focus:outline-none focus:border-[#0b6bcb]">
+                        <select id="filter-status-select" onchange="renderTenantsTable()" class="px-3 py-2 text-xs border border-slate-300 rounded-lg bg-white">
+                            <option value="">Todos los estados</option>
+                            <option value="Activo">Activo</option>
+                            <option value="Suspendido">Suspendido</option>
+                        </select>
+                    </div>
+                    <div class="text-xs text-slate-500">
+                        Cada tenant recibe su propia IP pública como URL de acceso a la App de Asistencia (<strong>RF-21</strong>).
+                    </div>
+                </div>
+
+                <!-- Tabla de Tenants -->
+                <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left border-collapse text-xs">
+                            <thead>
+                                <tr class="bg-slate-50 border-b border-slate-200 text-[11px] font-semibold uppercase text-slate-500">
+                                    <th class="py-3.5 px-4">Institución / Tenant (RF-14)</th>
+                                    <th class="py-3.5 px-4">URL / IP Pública (RF-21)</th>
+                                    <th class="py-3.5 px-4">Plan &amp; Recursos (RF-02)</th>
+                                    <th class="py-3.5 px-4">Motor IaC (RF-08)</th>
+                                    <th class="py-3.5 px-4">Estado VMs (RF-16/17)</th>
+                                    <th class="py-3.5 px-4 text-right">Acciones de Ciclo de Vida (RF-15 a RF-18)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tenants-table-body" class="divide-y divide-slate-200">
+                                <!-- Renderizado dinámicamente por JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- =================================================================== -->
+            <!-- VISTA 3: CATÁLOGO DE PLANES Y GOLDEN IMAGES (RF-01, RF-02 · Int. 1) -->
+            <!-- =================================================================== -->
+            <section id="view-plans" class="hidden max-w-6xl mx-auto space-y-6">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h1 class="text-2xl font-bold text-slate-900">Catálogo de Planes y Golden Images de Packer</h1>
+                        <p class="text-xs text-slate-500 mt-1">
+                            Especificación oficial del Entregable 4 (RF-01, RF-02 y RF-09). Los planes son de consulta fija (RF-04, RF-05 y RF-06 fueron tachados por el docente).
+                        </p>
+                    </div>
+                    <span class="rf-badge">RF-01, RF-02, Entregable 4 · Integrante 1</span>
+                </div>
+
+                <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                    <table class="w-full text-left border-collapse text-xs">
+                        <thead>
+                            <tr class="bg-slate-800 text-white text-[11px] uppercase">
+                                <th class="py-3.5 px-4">Plan (RF-01)</th>
+                                <th class="py-3.5 px-4">Público Objetivo</th>
+                                <th class="py-3.5 px-4">Cómputo Asignado: 3 VMs (RF-02)</th>
+                                <th class="py-3.5 px-4">Tamaño Base de Datos</th>
+                                <th class="py-3.5 px-4">Límite Estudiantes</th>
+                                <th class="py-3.5 px-4">Golden AMIs (Packer RF-09)</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-200">
+                            <tr>
+                                <td class="py-3.5 px-4 font-bold text-slate-900">Básico</td>
+                                <td class="py-3.5 px-4">Institutos pequeños / Demos</td>
+                                <td class="py-3.5 px-4 mono">3x t3.micro (1 vCPU, 1 GB RAM + 2GB Swap cloud-init)</td>
+                                <td class="py-3.5 px-4 font-semibold">10 GB EBS gp3</td>
+                                <td class="py-3.5 px-4">Hasta 100 estudiantes</td>
+                                <td class="py-3.5 px-4 mono text-sky-700">ami-front / ami-back / ami-db</td>
+                            </tr>
+                            <tr class="bg-sky-50/40">
+                                <td class="py-3.5 px-4 font-bold text-[#0b6bcb]">Estándar</td>
+                                <td class="py-3.5 px-4">Institutos medianos / Facultades</td>
+                                <td class="py-3.5 px-4 mono">3x t3.small (2 vCPU, 2 GB RAM + 2GB Swap cloud-init)</td>
+                                <td class="py-3.5 px-4 font-semibold">50 GB EBS gp3</td>
+                                <td class="py-3.5 px-4">Hasta 1,000 estudiantes</td>
+                                <td class="py-3.5 px-4 mono text-sky-700">ami-front / ami-back / ami-db</td>
+                            </tr>
+                            <tr>
+                                <td class="py-3.5 px-4 font-bold text-slate-900">Avanzado</td>
+                                <td class="py-3.5 px-4">Universidades grandes (UAGRM, UPSA, Unifranz)</td>
+                                <td class="py-3.5 px-4 mono">3x t3.medium (2 vCPU, 4 GB RAM + 2GB Swap cloud-init)</td>
+                                <td class="py-3.5 px-4 font-semibold">200 GB EBS gp3</td>
+                                <td class="py-3.5 px-4">Hasta 5,000 estudiantes</td>
+                                <td class="py-3.5 px-4 mono text-sky-700">ami-front / ami-back / ami-db</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- =================================================================== -->
+            <!-- VISTA 4: MONITOREO EN GRAFANA Y ALERTAS (RF-25 a RF-29 · Int. 6)    -->
+            <!-- =================================================================== -->
+            <section id="view-monitoring" class="hidden max-w-6xl mx-auto space-y-6">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div>
+                        <div class="flex items-center gap-2">
+                            <h1 class="text-2xl font-bold text-slate-900">Salud, Métricas y Alertas con Grafana</h1>
+                            <span class="rf-badge">RF-25, RF-26, RF-27, RF-28, RF-29 · Integrante 6</span>
+                        </div>
+                        <p class="text-xs text-slate-500 mt-1">
+                            Filtra métricas por tenant y entorno (RF-27): disponibilidad, CPU, RAM, disco, latencia, errores del backend y estado de PostgreSQL (RF-26).
+                        </p>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <select id="monitoring-tenant-select" onchange="updateMonitoringMetrics()" class="px-3.5 py-2 text-xs bg-white border border-slate-300 rounded-lg font-semibold text-slate-800">
+                            <option value="uagrm">UAGRM - Facultad FICCT (Producción)</option>
+                            <option value="unifranz">Universidad Unifranz (Producción)</option>
+                            <option value="san-marcos">Instituto San Marcos (Producción)</option>
+                        </select>
+                        <a href="http://localhost:3000" target="_blank" rel="noopener" class="px-4 py-2 rounded-lg bg-orange-600 hover:bg-orange-700 text-white text-xs font-semibold transition">
+                            Abrir Tablero Grafana (Entregable 5) ↗
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Tarjetas de Métricas Clave (RF-26) -->
+                <div class="grid grid-cols-2 md:grid-cols-6 gap-3">
+                    <div class="bg-white p-4 rounded-xl border border-slate-200">
+                        <div class="text-[11px] text-slate-400">Disponibilidad (RF-26)</div>
+                        <div id="metric-avail" class="text-lg font-bold text-emerald-600 mt-1">99.98% UP</div>
+                        <div class="text-[10px] text-slate-400 mt-1">Front, Back y DB activos</div>
+                    </div>
+                    <div class="bg-white p-4 rounded-xl border border-slate-200">
+                        <div class="text-[11px] text-slate-400">Uso de CPU (RF-26)</div>
+                        <div id="metric-cpu" class="text-lg font-bold text-slate-800 mt-1">24.5%</div>
+                        <div class="text-[10px] text-slate-400 mt-1">Promedio en las 3 VMs</div>
+                    </div>
+                    <div class="bg-white p-4 rounded-xl border border-slate-200">
+                        <div class="text-[11px] text-slate-400">Memoria RAM (RF-26)</div>
+                        <div id="metric-ram" class="text-lg font-bold text-slate-800 mt-1">61.2%</div>
+                        <div class="text-[10px] text-slate-400 mt-1">Swap 2 GB activo</div>
+                    </div>
+                    <div class="bg-white p-4 rounded-xl border border-slate-200">
+                        <div class="text-[11px] text-slate-400">Uso de Disco EBS</div>
+                        <div id="metric-disk" class="text-lg font-bold text-slate-800 mt-1">18.4%</div>
+                        <div class="text-[10px] text-slate-400 mt-1">Saludable (&lt; 85%)</div>
+                    </div>
+                    <div class="bg-white p-4 rounded-xl border border-slate-200">
+                        <div class="text-[11px] text-slate-400">Latencia &amp; Errores (RF-26)</div>
+                        <div id="metric-latency" class="text-lg font-bold text-sky-700 mt-1">42 ms (0 err)</div>
+                        <div class="text-[10px] text-slate-400 mt-1">145 req/min hacia API</div>
+                    </div>
+                    <div class="bg-white p-4 rounded-xl border border-slate-200">
+                        <div class="text-[11px] text-slate-400">Estado BD (RF-26)</div>
+                        <div id="metric-db" class="text-lg font-bold text-emerald-600 mt-1">CONECTADA</div>
+                        <div class="text-[10px] text-slate-400 mt-1">PostgreSQL Subred Privada</div>
+                    </div>
+                </div>
+
+                <!-- Alertas y Eventos Recientes (RF-28 y RF-29) -->
+                <div class="bg-white p-6 rounded-xl border border-slate-200">
+                    <div class="flex items-center justify-between mb-4">
+                        <div>
+                            <h2 class="text-base font-bold text-slate-800">Alertas y Eventos Recientes en la Plataforma (RF-28 y RF-29)</h2>
+                            <p class="text-xs text-slate-500">Muestra cada alerta generada por Grafana indicando el tenant afectado y la hora exacta de detección.</p>
+                        </div>
+                        <button onclick="triggerSampleAlert()" class="px-3.5 py-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 text-xs font-semibold transition">
+                            Simular Alerta de Ejemplo (RF-28 / RF-29)
+                        </button>
+                    </div>
+                    <div id="alerts-list-container" class="space-y-2.5 text-xs">
+                        <div class="p-3 rounded-lg bg-amber-50 border border-amber-200 flex items-center justify-between">
+                            <div>
+                                <span class="font-bold text-amber-900">[WARNING - Uso de CPU &gt; 80%]</span>
+                                <span class="text-amber-800 ml-2">Pico de carga durante importación masiva de Excel de estudiantes en el servidor Backend.</span>
+                            </div>
+                            <div class="text-right text-[11px] text-amber-700 mono">
+                                <div>Tenant afectado: <strong>uagrm</strong></div>
+                                <div>Hora detección: 20:14:08</div>
+                            </div>
+                        </div>
+                        <div class="p-3 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-between">
+                            <div>
+                                <span class="font-bold text-emerald-700">[RESOLVED - Servicio Reactivado]</span>
+                                <span class="text-slate-600 ml-2">Las 3 instancias EC2 respondieron al healthcheck tras reanudar el tenant.</span>
+                            </div>
+                            <div class="text-right text-[11px] text-slate-500 mono">
+                                <div>Tenant afectado: <strong>unifranz</strong></div>
+                                <div>Hora detección: 19:45:22</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- =================================================================== -->
+            <!-- VISTA 5: ESCÁNER DEVSECOPS Y REGISTRO DE VERSIONES (Int. 3)         -->
+            <!-- =================================================================== -->
+            <section id="view-security" class="hidden max-w-6xl mx-auto space-y-6">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h1 class="text-2xl font-bold text-slate-900">Escáner de Seguridad Pre-Deploy y Versiones (RF-11 y RF-13)</h1>
+                        <p class="text-xs text-slate-500 mt-1">
+                            Inspecciona los archivos de infraestructura para impedir secretos expuestos en el código y muestra las versiones usadas en cada despliegue.
+                        </p>
+                    </div>
+                    <span class="rf-badge">RF-11, RF-13, RNF-Seguridad · Integrante 3</span>
+                </div>
+                <div class="bg-white p-6 rounded-xl border border-slate-200 space-y-4">
+                    <div class="flex gap-3">
+                        <button onclick="runGlobalSecurityAudit()" class="px-4 py-2 rounded-lg bg-[#0b6bcb] text-white text-xs font-semibold">
+                            Ejecutar Escaneo de Repositorio Ahora
+                        </button>
+                    </div>
+                    <pre id="global-audit-log" class="mono text-xs bg-slate-950 text-emerald-400 p-4 rounded-xl overflow-x-auto leading-relaxed">[SCAN OK] 0 secretos expuestos en /packer, /terraform, /opentofu, /pulumi, /cloudformation y /ansible.
+[VAULT OK] Credenciales de PostgreSQL y JWT cifradas con Ansible Vault (AES-256).
+[VERSIONES RF-13] App Asistencia v2.4.0 | Packer v1.11.2 | Terraform v1.9.5 | OpenTofu v1.8.2 | Pulumi v3.130 | Ansible v2.17 | Grafana v11.2.</pre>
+                </div>
+            </section>
+
+            <!-- =================================================================== -->
+            <!-- VISTA 6: GUÍA DE LOS 6 ROLES CON MAPEO EXACTO DE RFs                -->
+            <!-- =================================================================== -->
+            <section id="view-team-guide" class="hidden max-w-6xl mx-auto space-y-6">
+                <div class="bg-amber-50 border border-amber-200 p-5 rounded-xl">
+                    <h1 class="text-lg font-bold text-amber-900">División Equilibrada de los 6 Integrantes y Mapeo de Requisitos Funcionales (RF)</h1>
+                    <p class="text-xs text-amber-900 mt-1">
+                        Todos los requisitos tachados por el docente (<strong>RF-04, RF-05, RF-06, RF-12, RF-19 y RF-20</strong>) han sido excluidos para que el equipo se concentre únicamente en lo obligatorio y cada integrante defienda una herramienta clave del módulo.
+                    </p>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 text-xs">
+                    <div class="bg-white p-4 rounded-xl border border-slate-200 space-y-2">
+                        <div class="flex items-center justify-between">
+                            <span class="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-sky-100 text-sky-800">Integrante 1</span>
+                            <span class="rf-badge">RF-01, RF-02, RF-09, RF-13</span>
+                        </div>
+                        <h3 class="font-bold text-slate-900">Packer (Golden Images) + cloud-init + Catálogo</h3>
+                        <p class="text-slate-500">Compila las 3 AMIs en AWS/Azure con Packer, programa los <code>cloud-init</code> (Swap 2 GB y SSH) y crea la tabla/vista del Catálogo de Planes (Entregable 4).</p>
+                    </div>
+
+                    <div class="bg-white p-4 rounded-xl border border-slate-200 space-y-2">
+                        <div class="flex items-center justify-between">
+                            <span class="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-sky-100 text-sky-800">Integrante 2</span>
+                            <span class="rf-badge">RF-03, RF-07, RF-08, RF-09</span>
+                        </div>
+                        <h3 class="font-bold text-slate-900">Terraform / OpenTofu + Web Paso 1</h3>
+                        <p class="text-slate-500">Programa las redes, Security Groups, tamaños de VM por Plan usando las AMIs del Int. 1, autogenera el <code>hosts.ini</code> y desarrolla el Paso 1 y la tabla <code>tenants</code>.</p>
+                    </div>
+
+                    <div class="bg-white p-4 rounded-xl border border-slate-200 space-y-2">
+                        <div class="flex items-center justify-between">
+                            <span class="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-sky-100 text-sky-800">Integrante 3</span>
+                            <span class="rf-badge">RF-08, RF-09, RF-11, RF-13</span>
+                        </div>
+                        <h3 class="font-bold text-slate-900">Pulumi / CloudFormation + Escáner DevSecOps</h3>
+                        <p class="text-slate-500">Implementa el 2do motor IaC con las AMIs del Int. 1, construye el escáner que detecta secretos expuestos antes de desplegar y desarrolla el Paso 2.</p>
+                    </div>
+
+                    <div class="bg-white p-4 rounded-xl border border-slate-200 space-y-2">
+                        <div class="flex items-center justify-between">
+                            <span class="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-sky-100 text-sky-800">Integrante 4</span>
+                            <span class="rf-badge">RF-10, RF-21, Entregable 7</span>
+                        </div>
+                        <h3 class="font-bold text-slate-900">Ansible + Vault + App Asistencia Multi-Tenant</h3>
+                        <p class="text-slate-500">Configura BD, Backend y Frontend por túnel SSH con secretos cifrados en Ansible Vault, personaliza la App de Asistencia por tenant y demuestra el aislamiento.</p>
+                    </div>
+
+                    <div class="bg-white p-4 rounded-xl border border-slate-200 space-y-2">
+                        <div class="flex items-center justify-between">
+                            <span class="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-sky-100 text-sky-800">Integrante 5</span>
+                            <span class="rf-badge">RF-11, RF-14, RF-15, RF-16, RF-17, RF-18</span>
+                        </div>
+                        <h3 class="font-bold text-slate-900">Orquestador 2do Plano + Ciclo de Vida VMs</h3>
+                        <p class="text-slate-500">Transmite los logs en vivo en pantalla (Paso 3) y programa la vista Lista de Tenants con Actualizar nombre, Suspender (Stop VM), Reanudar (Start VM) y Eliminar (Destroy).</p>
+                    </div>
+
+                    <div class="bg-white p-4 rounded-xl border border-slate-200 space-y-2">
+                        <div class="flex items-center justify-between">
+                            <span class="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-sky-100 text-sky-800">Integrante 6 (Team Lead)</span>
+                            <span class="rf-badge">RF-25 a RF-29, Entregables 3, 5, 8</span>
+                        </div>
+                        <h3 class="font-bold text-slate-900">Grafana + Alertas + Manual y Video Final</h3>
+                        <p class="text-slate-500">Levanta Prometheus/Grafana por tenant, configura alertas por Webhook hacia la vista de Monitoreo y consolida el Manual para usuario no técnico y el video.</p>
+                    </div>
+                </div>
+            </section>
+
+        </main>
+    </div>
+
+    <script>
+        let currentPlan = 'Estándar';
+        let currentStep = 1;
+
+        const planSpecs = {
+            'Básico': { db: '10 GB', vm: 't3.micro (1 vCPU, 1 GB)', students: '100' },
+            'Estándar': { db: '50 GB', vm: 't3.small (2 vCPU, 2 GB)', students: '1,000' },
+            'Avanzado': { db: '200 GB', vm: 't3.medium (2 vCPU, 4 GB)', students: '5,000' }
+        };
+
+        let tenantsList = [
+            {
+                id: 'uagrm',
+                name: 'UAGRM - Facultad FICCT',
+                email: 'admin@uagrm.edu.bo',
+                ip: '54.152.44.90',
+                plan: 'Avanzado',
+                engine: 'Terraform',
+                region: 'AWS us-east-1',
+                status: 'Activo'
+            },
+            {
+                id: 'unifranz',
+                name: 'Universidad Unifranz',
+                email: 'ti@unifranz.edu.bo',
+                ip: '18.198.21.12',
+                plan: 'Estándar',
+                engine: 'OpenTofu',
+                region: 'AWS sa-east-1',
+                status: 'Activo'
+            },
+            {
+                id: 'cumbre',
+                name: 'Universidad Cumbre',
+                email: 'soporte@cumbre.edu.bo',
+                ip: '20.114.88.31',
+                plan: 'Básico',
+                engine: 'Pulumi',
+                region: 'Azure East US 2',
+                status: 'Suspendido'
+            }
+        ];
+
+        function switchMainView(viewName) {
+            const views = ['create', 'dashboard', 'plans', 'monitoring', 'security', 'team-guide'];
+            views.forEach(v => {
+                document.getElementById('view-' + v).classList.add('hidden');
+                const navBtn = document.getElementById('nav-' + v);
+                if (navBtn) navBtn.classList.remove('sidebar-item-active');
+            });
+
+            document.getElementById('view-' + viewName).classList.remove('hidden');
+            const activeNav = document.getElementById('nav-' + viewName);
+            if (activeNav) activeNav.classList.add('sidebar-item-active');
+
+            const titles = {
+                'create': 'Crear tenant (RF-07 a RF-13)',
+                'dashboard': 'Lista y Ciclo de Vida de Tenants (RF-14 a RF-18)',
+                'plans': 'Catálogo de Planes y Golden AMIs (RF-01, RF-02)',
+                'monitoring': 'Monitoreo y Alertas en Grafana (RF-25 a RF-29)',
+                'security': 'Escáner de Seguridad y Versiones (RF-11, RF-13)',
+                'team-guide': 'División de 6 Integrantes y Mapeo de RFs'
+            };
+            document.getElementById('top-breadcrumb-current').textContent = titles[viewName] || 'Tenants';
+
+            if (viewName === 'dashboard') {
+                renderTenantsTable();
+            }
+        }
+
+        function selectPlan(planName) {
+            currentPlan = planName;
+            ['Básico', 'Estándar', 'Avanzado'].forEach(p => {
+                const card = document.getElementById('card-plan-' + p);
+                const badge = document.getElementById('badge-plan-' + p);
+                if (p === planName) {
+                    card.classList.add('plan-card-selected');
+                    badge.classList.remove('hidden');
+                } else {
+                    card.classList.remove('plan-card-selected');
+                    badge.classList.add('hidden');
+                }
+            });
+            syncSummary();
+        }
+
+        function syncSummary() {
+            const instName = document.getElementById('input-inst-name').value.trim() || 'Nueva Institución';
+            const slug = document.getElementById('input-tenant-slug').value.trim() || 'nuevo-tenant';
+            const region = document.getElementById('input-region').value;
+            const env = document.getElementById('input-env').value;
+            const engine = document.getElementById('input-iac-engine').value;
+
+            document.getElementById('summary-inst-name').textContent = instName;
+            document.getElementById('summary-tenant-url').textContent = slug + '.escuelas.app';
+            document.getElementById('summary-plan').textContent = currentPlan;
+            document.getElementById('summary-db-size').textContent = 'Base de datos aislada (' + planSpecs[currentPlan].db + ')';
+            document.getElementById('summary-env').textContent = env;
+            document.getElementById('summary-region').textContent = region;
+            document.getElementById('summary-engine').textContent = engine;
+            document.getElementById('version-iac-label').textContent = engine + ' (Latest)';
+        }
+
+        function goToCreateStep(step) {
+            currentStep = step;
+            [1, 2, 3].forEach(s => {
+                const panel = document.getElementById('create-step-' + s);
+                const circle = document.getElementById('step-circle-' + s);
+                if (s === step) {
+                    panel.classList.remove('hidden');
+                    circle.className = 'w-5 h-5 rounded-full bg-[#0b6bcb] text-white text-[11px] flex items-center justify-center';
+                } else {
+                    panel.classList.add('hidden');
+                    circle.className = 'w-5 h-5 rounded-full border border-slate-300 text-slate-500 text-[11px] flex items-center justify-center';
+                }
+            });
+            document.getElementById('step-counter-label').textContent = 'PASO ' + step + ' DE 3';
+            const btnContinue = document.getElementById('btn-continue-step');
+            if (step < 3) {
+                btnContinue.innerHTML = '<span>Continuar</span><span>→</span>';
+            } else {
+                btnContinue.innerHTML = '<span>Ejecutar Aprovisionamiento (RF-09)</span><span>⚡</span>';
+            }
+        }
+
+        function nextCreateStep() {
+            if (currentStep < 3) {
+                goToCreateStep(currentStep + 1);
+            } else {
+                startFullProvisioning();
+            }
+        }
+
+        function runSecurityScan(simulateError) {
+            const box = document.getElementById('security-scan-output');
+            if (simulateError) {
+                box.className = 'mono text-[11px] p-4 rounded-lg bg-red-950 text-red-300 leading-relaxed border border-red-700';
+                box.innerHTML = `[ALERTA CRÍTICA - ESCÁNER DEVSECOPS (RF-11 / RNF-Seguridad)]
+> Escaneando archivos .tf, .pkr.hcl y variables...
+> [ERROR] Se detectó credencial expuesta AWS_SECRET_ACCESS_KEY=******** en main.tf (Línea 14).
+> [ACCIÓN] Despliegue bloqueado. Elimina la credencial del código y usa Variables de Entorno / Ansible Vault.`;
+            } else {
+                box.className = 'mono text-[11px] p-4 rounded-lg bg-slate-900 text-emerald-400 leading-relaxed';
+                box.innerHTML = `[ESCÁNER DEVSECOPS COMPLETADO SIN ERRORES]
+> [OK] tfsec: Security Groups aislados por tenant (PostgreSQL puerto 5432 cerrado a internet).
+> [OK] Secret Scanner: 0 credenciales expuestas en el repositorio.
+> [OK] Golden AMIs de Packer verificadas (RF-09, RF-13).`;
+            }
+        }
+
+        function startFullProvisioning() {
+            const instName = document.getElementById('input-inst-name').value.trim() || 'Instituto San Marcos';
+            const slug = document.getElementById('input-tenant-slug').value.trim() || 'san-marcos';
+            const email = document.getElementById('input-admin-email').value.trim() || 'admin@institucion.edu';
+            const region = document.getElementById('input-region').value;
+            const engine = document.getElementById('input-iac-engine').value;
+
+            const consoleEl = document.getElementById('live-deploy-console');
+            const statusPill = document.getElementById('deploy-status-pill');
+            statusPill.className = 'text-xs px-3 py-1 rounded-full font-semibold bg-amber-100 text-amber-800';
+            statusPill.textContent = 'Aprovisionando en 2do plano...';
+
+            const randomIp = '54.' + Math.floor(110 + Math.random() * 120) + '.' + Math.floor(10 + Math.random() * 200) + '.' + Math.floor(10 + Math.random() * 240);
+
+            const steps = [
+                `[RF-11 / RNF-Seguridad - Int. 3] Ejecutando escáner de seguridad pre-deploy... OK (0 secretos expuestos).`,
+                `[RF-09 / RF-13 - Int. 1] Seleccionando Golden Images creadas con Packer para plan "${currentPlan}": ami-0a91f8c32frontend, ami-0b72d4e19backend, ami-0c54e1a88postgres.`,
+                `[RF-08 / RF-09 - Int. 2 y 3] Ejecutando motor ${engine} en región "${region}" para el tenant "${slug}"...`,
+                `[${engine.toUpperCase()}] Aprovisionando VPC, 3 Security Groups aislados y 3 VMs (${planSpecs[currentPlan].vm}, BD: ${planSpecs[currentPlan].db})...`,
+                `[Sección 4: cloud-init - Int. 1] Configurando primer arranque en las 3 VMs (Swap 2 GB, timezone America/La_Paz, llaves SSH)... OK.`,
+                `[${engine.toUpperCase()}] Generando inventario dinámico inventories/${slug}/hosts.ini -> IP Pública Frontend: ${randomIp}.`,
+                `[RF-10 - Int. 4] Ejecutando: ansible-playbook -i inventories/${slug}/hosts.ini site.yml --vault-password-file .vault_pass`,
+                `[ANSIBLE] Rol [database] -> Base de datos aislada "db_${slug.replace(/-/g, '_')}" creada en subred privada.`,
+                `[ANSIBLE] Rol [backend]  -> Variables inyectadas, migraciones listas y API levantada con PM2.`,
+                `[ANSIBLE] Rol [frontend] -> Aplicación de Registro de Asistencia (RF-21) desplegada en Nginx (http://${randomIp}).`,
+                `[RF-25 - Int. 6] Registrando los 3 nodos de "${instName}" en Prometheus y tablero de Grafana...`,
+                `[COMPLETADO] Tenant "${instName}" activo. URL de acceso (IP pública): http://${randomIp}`
+            ];
+
+            consoleEl.innerHTML = '';
+            let idx = 0;
+            const interval = setInterval(() => {
+                if (idx < steps.length) {
+                    const line = document.createElement('div');
+                    line.className = idx === steps.length - 1 ? 'text-emerald-400 font-bold mt-1' : 'text-slate-300';
+                    line.textContent = steps[idx];
+                    consoleEl.appendChild(line);
+                    consoleEl.scrollTop = consoleEl.scrollHeight;
+                    idx++;
+                } else {
+                    clearInterval(interval);
+                    statusPill.className = 'text-xs px-3 py-1 rounded-full font-semibold bg-emerald-100 text-emerald-800';
+                    statusPill.textContent = 'Despliegue Completado';
+
+                    const existingIndex = tenantsList.findIndex(t => t.id === slug);
+                    const newTenantObj = {
+                        id: slug,
+                        name: instName,
+                        email: email,
+                        ip: randomIp,
+                        plan: currentPlan,
+                        engine: engine,
+                        region: region,
+                        status: 'Activo'
+                    };
+                    if (existingIndex >= 0) {
+                        tenantsList[existingIndex] = newTenantObj;
+                    } else {
+                        tenantsList.unshift(newTenantObj);
+                    }
+                    document.getElementById('badge-tenants-count').textContent = tenantsList.length;
+                }
+            }, 420);
+        }
+
+        function renderTenantsTable() {
+            const tbody = document.getElementById('tenants-table-body');
+            const query = (document.getElementById('search-tenant-input')?.value || '').toLowerCase();
+            const statusFilter = document.getElementById('filter-status-select')?.value || '';
+            tbody.innerHTML = '';
+
+            const filtered = tenantsList.filter(t => {
+                const matchesQuery = t.name.toLowerCase().includes(query) || t.id.toLowerCase().includes(query);
+                const matchesStatus = !statusFilter || t.status === statusFilter;
+                return matchesQuery && matchesStatus;
+            });
+
+            filtered.forEach(t => {
+                const isActive = t.status === 'Activo';
+                const statusBadge = isActive
+                    ? `<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>Activo (3 VMs ON)</span>`
+                    : `<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-amber-50 text-amber-800 border border-amber-200"><span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>Suspendido (VMs Apagadas)</span>`;
+
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-slate-50/80 transition';
+                tr.innerHTML = `
+                    <td class="py-3.5 px-4">
+                        <div class="font-bold text-slate-900">${t.name}</div>
+                        <div class="text-[11px] text-slate-400 mono">ID: ${t.id} · ${t.email}</div>
+                    </td>
+                    <td class="py-3.5 px-4">
+                        <a href="http://${t.ip}" target="_blank" rel="noopener" class="mono text-xs font-semibold text-[#0b6bcb] hover:underline">http://${t.ip} ↗</a>
+                        <div class="text-[10px] text-slate-400">Entorno: Producción</div>
+                    </td>
+                    <td class="py-3.5 px-4">
+                        <span class="font-semibold text-slate-800">${t.plan}</span>
+                        <div class="text-[10px] text-slate-400">BD: ${planSpecs[t.plan]?.db || '50 GB'}</div>
+                    </td>
+                    <td class="py-3.5 px-4">
+                        <span class="px-2 py-0.5 rounded bg-slate-100 text-slate-700 font-semibold text-[11px]">${t.engine}</span>
+                        <div class="text-[10px] text-slate-400 mt-0.5">${t.region}</div>
+                    </td>
+                    <td class="py-3.5 px-4">${statusBadge}</td>
+                    <td class="py-3.5 px-4 text-right space-x-1 whitespace-nowrap">
+                        <button onclick="editTenantName('${t.id}')" class="px-2.5 py-1 rounded border border-slate-300 hover:bg-slate-100 text-slate-700 font-medium text-[11px]">
+                            Actualizar Nombre (RF-15)
+                        </button>
+                        <button onclick="toggleSuspendTenant('${t.id}')" class="px-2.5 py-1 rounded border ${isActive ? 'border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100' : 'border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100'} font-medium text-[11px]">
+                            ${isActive ? 'Suspender (RF-16/17)' : 'Reanudar (RF-16)'}
+                        </button>
+                        <button onclick="openTenantGrafana('${t.id}')" class="px-2.5 py-1 rounded border border-sky-200 bg-sky-50 text-sky-700 hover:bg-sky-100 font-medium text-[11px]">
+                            Grafana (RF-25)
+                        </button>
+                        <button onclick="deleteTenant('${t.id}')" class="px-2.5 py-1 rounded border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 font-medium text-[11px]">
+                            Eliminar (RF-18)
+                        </button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function editTenantName(tenantId) {
+            const tenant = tenantsList.find(t => t.id === tenantId);
+            if (!tenant) return;
+            const nuevoNombre = prompt('RF-15 — Actualizar nombre de la institución (simplificado por el docente en Min. 2:03:20):', tenant.name);
+            if (nuevoNombre && nuevoNombre.trim() !== '') {
+                tenant.name = nuevoNombre.trim();
+                renderTenantsTable();
+            }
+        }
+
+        function toggleSuspendTenant(tenantId) {
+            const tenant = tenantsList.find(t => t.id === tenantId);
+            if (!tenant) return;
+            if (tenant.status === 'Activo') {
+                tenant.status = 'Suspendido';
+                alert(`RF-16 y RF-17 — Tenant "${tenant.name}" SUSPENDIDO.\n\nAcción ejecutada por el Integrante 5:\naws ec2 stop-instances (Las 3 máquinas virtuales se apagaron para reducir costos conservando intactos los datos en su volumen EBS).`);
+            } else {
+                tenant.status = 'Activo';
+                alert(`RF-16 — Tenant "${tenant.name}" REANUDADO.\n\nAcción ejecutada por el Integrante 5:\naws ec2 start-instances + actualización automática de la IP pública dinámica en el inventario Ansible.`);
+            }
+            renderTenantsTable();
+        }
+
+        function deleteTenant(tenantId) {
+            const tenant = tenantsList.find(t => t.id === tenantId);
+            if (!tenant) return;
+            const confirmar = confirm(`RF-18 — Confirmación de Eliminación de Tenant\n\nInstitución: ${tenant.name} (${tenant.id})\nRecursos que se destruirán permanentemente:\n- 3 Instancias VMs (Frontend, Backend, Base de Datos) en ${tenant.region}\n- Volumen de Base de Datos PostgreSQL (${planSpecs[tenant.plan]?.db || '50 GB'}) y todos sus registros de asistencia\n- Security Groups aislados del tenant\n\n¿Confirmas ejecutar "${tenant.engine.toLowerCase()} destroy"?`);
+            if (confirmar) {
+                tenantsList = tenantsList.filter(t => t.id !== tenantId);
+                document.getElementById('badge-tenants-count').textContent = tenantsList.length;
+                renderTenantsTable();
+            }
+        }
+
+        function openTenantGrafana(tenantId) {
+            switchMainView('monitoring');
+            const select = document.getElementById('monitoring-tenant-select');
+            if (select) {
+                select.value = tenantId;
+                updateMonitoringMetrics();
+            }
+        }
+
+        function updateMonitoringMetrics() {
+            const val = document.getElementById('monitoring-tenant-select').value;
+            const presets = {
+                'uagrm': { avail: '99.98% UP', cpu: '24.5%', ram: '61.2%', disk: '18.4%', lat: '42 ms (0 err)', db: 'CONECTADA' },
+                'unifranz': { avail: '99.95% UP', cpu: '19.1%', ram: '54.0%', disk: '14.2%', lat: '38 ms (0 err)', db: 'CONECTADA' },
+                'san-marcos': { avail: '100% UP', cpu: '11.8%', ram: '43.5%', disk: '9.1%', lat: '29 ms (0 err)', db: 'CONECTADA' }
+            };
+            const p = presets[val] || presets['uagrm'];
+            document.getElementById('metric-avail').textContent = p.avail;
+            document.getElementById('metric-cpu').textContent = p.cpu;
+            document.getElementById('metric-ram').textContent = p.ram;
+            document.getElementById('metric-disk').textContent = p.disk;
+            document.getElementById('metric-latency').textContent = p.lat;
+            document.getElementById('metric-db').textContent = p.db;
+        }
+
+        function triggerSampleAlert() {
+            const container = document.getElementById('alerts-list-container');
+            const now = new Date().toTimeString().split(' ')[0];
+            const alertDiv = document.createElement('div');
+            alertDiv.className = 'p-3 rounded-lg bg-red-50 border border-red-200 flex items-center justify-between';
+            alertDiv.innerHTML = `
+                <div>
+                    <span class="font-bold text-red-800">[CRITICAL - Alerta Grafana RF-28 / RF-29]</span>
+                    <span class="text-red-700 ml-2">Umbral de errores HTTP 5xx superado o servicio detenido en prueba de aceptación.</span>
+                </div>
+                <div class="text-right text-[11px] text-red-700 mono">
+                    <div>Tenant afectado: <strong>san-marcos</strong></div>
+                    <div>Hora detección: ${now}</div>
+                </div>
+            `;
+            container.prepend(alertDiv);
+        }
+
+        function runGlobalSecurityAudit() {
+            const log = document.getElementById('global-audit-log');
+            log.textContent = `[EJECUTANDO ESCÁNER DEVSECOPS EN REPOSITORIO (RNF-Seguridad)...]
+> Analizando /packer/*.pkr.hcl ... OK
+> Analizando /terraform/*.tf y /opentofu/*.tf ... OK
+> Analizando /pulumi y /cloudformation ... OK
+> Analizando /ansible/group_vars ... OK (Cifrado con Ansible Vault)
+[RESULTADO] 0 credenciales expuestas. Versiones registradas para RF-13.`;
+        }
+
+        syncSummary();
+        renderTenantsTable();
+    </script>
+</body>
+</html>

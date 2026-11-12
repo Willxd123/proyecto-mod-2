@@ -1,0 +1,20 @@
+#cloud-config
+hostname: __TENANT_SLUG__-frontend
+manage_etc_hosts: true
+timezone: America/La_Paz
+disable_root: true
+ssh_pwauth: false
+ssh_deletekeys: true
+__SSH_AUTHORIZED_KEYS__
+swap:
+  filename: /swapfile
+  size: 2147483648
+  maxsize: 2147483648
+write_files:
+  - path: /etc/campus-cloud/tenant.env
+    permissions: '0644'
+    content: |
+      TENANT_SLUG=__TENANT_SLUG__
+      SERVER_ROLE=frontend
+runcmd:
+  - [systemctl, enable, --now, nginx]

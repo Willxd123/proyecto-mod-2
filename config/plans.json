@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "catalog_version": "1.1.0",
+  "description": "Capacidades propuestas para el laboratorio; sin precios ni garantía de rendimiento. Límites informativos, RF-05 fuera de alcance.",
+  "plans": [
+    {"slug": "basico", "name": "Básico", "description": "Para comenzar con una institución pequeña.", "max_students": 100, "roles": {"frontend": {"instance_type": "t3.micro", "vcpu": 2, "ram_gib": 1, "disk_gib": 12}, "backend": {"instance_type": "t3.micro", "vcpu": 2, "ram_gib": 1, "disk_gib": 12}, "database": {"instance_type": "t3.micro", "vcpu": 2, "ram_gib": 1, "disk_gib": 20}}, "backup_policy": "Manual: pg_dump bajo demanda; sin respaldo automático (RF-19 fuera de alcance)"},
+    {"slug": "estandar", "name": "Estándar", "description": "Más capacidad para acompañar el crecimiento.", "max_students": 500, "roles": {"frontend": {"instance_type": "t3.micro", "vcpu": 2, "ram_gib": 1, "disk_gib": 16}, "backend": {"instance_type": "t3.small", "vcpu": 2, "ram_gib": 2, "disk_gib": 20}, "database": {"instance_type": "t3.small", "vcpu": 2, "ram_gib": 2, "disk_gib": 40}}, "backup_policy": "Manual: pg_dump bajo demanda; sin respaldo automático (RF-19 fuera de alcance)"},
+    {"slug": "avanzado", "name": "Avanzado", "description": "Recursos ampliados para instituciones más grandes.", "max_students": 1500, "roles": {"frontend": {"instance_type": "t3.small", "vcpu": 2, "ram_gib": 2, "disk_gib": 20}, "backend": {"instance_type": "t3.medium", "vcpu": 2, "ram_gib": 4, "disk_gib": 30}, "database": {"instance_type": "t3.medium", "vcpu": 2, "ram_gib": 4, "disk_gib": 80}}, "backup_policy": "Manual: pg_dump bajo demanda; sin respaldo automático (RF-19 fuera de alcance)"}
+  ]
+}

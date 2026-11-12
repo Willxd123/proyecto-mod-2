@@ -1,0 +1,22 @@
+{
+  "name": "proyecto-modulo-2",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "pnpm --filter @modulo2/contracts build && concurrently -k -n API,WEB \"pnpm dev:backend\" \"pnpm dev:frontend\"",
+    "dev:frontend": "pnpm --filter @modulo2/frontend start",
+    "dev:backend": "pnpm --filter @modulo2/backend start:dev",
+    "build:backend": "pnpm --filter @modulo2/contracts build && pnpm --filter @modulo2/backend build",
+    "build": "pnpm build:backend && pnpm --filter @modulo2/frontend build",
+    "test": "pnpm build:backend && node --test tests/backend.test.cjs && python -m unittest discover -s tests -p test_*.py -v",
+    "check": "pnpm test && pnpm build"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.0",
+    "typescript": "~5.9.3"
+  },
+  "engines": {
+    "node": ">=22.12.0 <23"
+  },
+  "packageManager": "pnpm@10.32.1"
+}

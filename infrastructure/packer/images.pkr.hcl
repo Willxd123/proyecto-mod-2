@@ -83,7 +83,7 @@ source "amazon-ebs" "tenant" {
   temporary_security_group_source_cidrs = [var.ssh_source_cidr]
   ssh_clear_authorized_keys             = true
   ami_name                              = "modulo2-${var.role}-${var.image_version}-${var.build_id}-{{timestamp}}"
-  ami_description                       = "Imagen académica ${var.role}; sin credenciales ni datos de tenants."
+  ami_description                       = "Imagen academica ${var.role}; sin credenciales ni datos de tenants."
   encrypt_boot                          = true
   imds_support                          = "v2.0"
   source_ami_filter {

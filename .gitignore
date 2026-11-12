@@ -25,6 +25,7 @@ coverage/
 *.tsbuildinfo
 .pnpm-store/
 infrastructure/packer/manifest-*.json
+infrastructure/packer/manifest-*.json.lock
 .tools/
 infrastructure/observability/prometheus/targets/tenant-*.json
 

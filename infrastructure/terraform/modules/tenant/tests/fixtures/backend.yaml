@@ -1,0 +1,19 @@
+#cloud-config
+hostname: i2-fixture-backend
+manage_etc_hosts: true
+timezone: America/La_Paz
+disable_root: true
+ssh_pwauth: false
+ssh_deletekeys: true
+ssh_authorized_keys:
+  - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFixtureFixtureFixtureFixtureFixtureFixture00 fixture"
+swap:
+  filename: /swapfile
+  size: 2147483648
+  maxsize: 2147483648
+write_files:
+  - path: /etc/campus-cloud/tenant.env
+    permissions: '0644'
+    content: |
+      TENANT_SLUG=i2-fixture
+      SERVER_ROLE=backend

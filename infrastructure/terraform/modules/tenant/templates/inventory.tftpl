@@ -1,0 +1,31 @@
+# Generado por Terraform/OpenTofu para el tenant ${tenant_slug}. No versionar.
+# Backend y base de datos están en la subred privada: Ansible entra a través del frontend (bastión).
+
+[frontend]
+${tenant_slug}-frontend ansible_host=${frontend_public_ip} private_ip=${frontend_private_ip}
+
+[backend]
+${tenant_slug}-backend ansible_host=${backend_private_ip} private_ip=${backend_private_ip}
+
+[database]
+${tenant_slug}-database ansible_host=${database_private_ip} private_ip=${database_private_ip}
+
+[private:children]
+backend
+database
+
+[all:vars]
+ansible_user=ubuntu
+%{ if ssh_private_key_path != "" ~}
+ansible_ssh_private_key_file=${ssh_private_key_path}
+%{ endif ~}
+tenant_slug=${tenant_slug}
+plan_slug=${plan_slug}
+aws_region=${region}
+backend_port=${backend_port}
+frontend_public_ip=${frontend_public_ip}
+backend_private_ip=${backend_private_ip}
+database_private_ip=${database_private_ip}
+
+[private:vars]
+ansible_ssh_common_args='-o StrictHostKeyChecking=accept-new -o ProxyCommand="ssh -W %h:%p -q -o StrictHostKeyChecking=accept-new${ssh_private_key_path != "" ? " -i ${ssh_private_key_path}" : ""} ubuntu@${frontend_public_ip}"'

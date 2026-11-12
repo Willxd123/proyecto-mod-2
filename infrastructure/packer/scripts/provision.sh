@@ -3,7 +3,8 @@ set -euo pipefail
 cloud-init status --wait
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
-apt-get install -y ca-certificates curl git openssl python3 acl xz-utils prometheus-node-exporter \n  net-tools iproute2 dnsutils iputils-ping netcat-openbsd rsync
+apt-get install -y ca-certificates curl git openssl python3 acl xz-utils prometheus-node-exporter \
+  net-tools iproute2 dnsutils iputils-ping netcat-openbsd rsync
 install -d /etc/systemd/system/prometheus-node-exporter.service.d
 cat >/etc/systemd/system/prometheus-node-exporter.service.d/listen.conf <<'EOF'
 [Service]

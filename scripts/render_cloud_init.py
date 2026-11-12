@@ -22,9 +22,10 @@ def render(tenant_slug, role, ssh_public_keys=()):
         raise ValueError('Rol no permitido.')
     keys = [validate_public_key(key) for key in ssh_public_keys]
     # JSON es un escalar YAML válido y evita interpolar texto sin comillas.
-    block = 'ssh_authorized_keys:\n' + '\n'.join(f'  - {json.dumps(key)}' for key in keys) if keys else 'ssh_authorized_keys: []'
+    # cloud-init exige al menos una llave: sin llaves se omite la clave (una lista vacía degrada el arranque).
+    block = 'ssh_authorized_keys:\n' + '\n'.join(f'  - {json.dumps(key)}' for key in keys) + '\n' if keys else ''
     template = ROOT / 'infrastructure/cloud-init' / f'{role}.yaml.tmpl'
-    return template.read_text(encoding='utf-8').replace('__TENANT_SLUG__', tenant_slug).replace('__SSH_AUTHORIZED_KEYS__', block)
+    return template.read_text(encoding='utf-8').replace('__TENANT_SLUG__', tenant_slug).replace('__SSH_AUTHORIZED_KEYS__\n', block)
 
 
 def read_key_file(path):

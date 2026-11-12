@@ -41,7 +41,7 @@ class InfrastructureContracts(unittest.TestCase):
             text = renderer.render('instituto-demo', role, [key])
             self.assertIn('ssh_authorized_keys:\n  - "' + key + '"', text)
             self.assertNotIn('__SSH_AUTHORIZED_KEYS__', text)
-            self.assertIn('ssh_authorized_keys: []', renderer.render('instituto-demo', role))
+            self.assertNotIn('ssh_authorized_keys', renderer.render('instituto-demo', role))  # lista vacia = degraded en cloud-init
         for bad in ['-----BEGIN OPENSSH PRIVATE KEY-----', 'ssh-ed25519 AAAA"\nruncmd: [x]', 'ssh-ed25519 AAAA\nssh-rsa BBBB', 'password123']:
             with self.assertRaises(ValueError): renderer.render('instituto-demo', 'backend', [bad])
 

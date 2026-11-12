@@ -183,13 +183,15 @@ def smoke(config, pem):
             result = None
             for _ in range(36):
                 try:
-                    result = subprocess.run(command, input=(ROOT / 'scripts/verify_image.sh').read_text(encoding='utf-8'), capture_output=True, text=True, timeout=180)
+                    # Bytes: con text=True, Windows convertiria LF en CRLF y bash rechazaria el script (set -o pipefail con CR).
+                    script = (ROOT / 'scripts/verify_image.sh').read_bytes().replace(b'\r\n', b'\n')
+                    result = subprocess.run(command, input=script, capture_output=True, timeout=180)
                 except subprocess.TimeoutExpired:
                     raise RuntimeError('La comprobación SSH excedió el tiempo máximo.') from None
                 if result.returncode == 0: break
                 time.sleep(5)
             if result is None or result.returncode: raise RuntimeError(f'Falló la comprobación de {role}. No se guardan salidas potencialmente sensibles.')
-            evidence['images'].append(dict(role=role, ami_id=image['ami_id'], instance_id=instance_id, checks='passed', output=result.stdout))
+            evidence['images'].append(dict(role=role, ami_id=image['ami_id'], instance_id=instance_id, checks='passed', output=result.stdout.decode('utf-8', 'replace')))
             save(directory / 'evidence.json', evidence)
             current = aws(region, 'ec2', 'describe-instances', '--instance-ids', instance_id)['Reservations'][0]['Instances'][0]
             if not owned_instance(current, run_id): raise ValueError('Etiquetas inesperadas: no se autoriza terminar el recurso.')

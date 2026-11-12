@@ -1,5 +1,35 @@
 {
   "schema_version": 1,
-  "images": [],
-  "note": "No hay AMIs construidas todavía. Publicar resultados reales con scripts/import_packer_manifest.py; nunca inventar identificadores."
+  "images": [
+    {
+      "role": "frontend",
+      "provider": "aws",
+      "region": "us-east-1",
+      "ami_id": "ami-0f37d1dc2441dc528",
+      "image_version": "0.1.0",
+      "source_revision": "85242f6",
+      "packer_version": "1.14.3",
+      "built_at": "2026-11-12T04:12:38+00:00"
+    },
+    {
+      "role": "backend",
+      "provider": "aws",
+      "region": "us-east-1",
+      "ami_id": "ami-06221e74d92a08235",
+      "image_version": "0.1.0",
+      "source_revision": "85242f6",
+      "packer_version": "1.14.3",
+      "built_at": "2026-11-12T04:30:34+00:00"
+    },
+    {
+      "role": "database",
+      "provider": "aws",
+      "region": "us-east-1",
+      "ami_id": "ami-040e600fa53e9aa75",
+      "image_version": "0.1.0",
+      "source_revision": "85242f6",
+      "packer_version": "1.14.3",
+      "built_at": "2026-11-12T04:43:44+00:00"
+    }
+  ]
 }

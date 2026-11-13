@@ -133,6 +133,49 @@ test('POST /api/tenants/validate: detecta slug repetido (transacción revertida)
 const draft = (changes = {}) => ({ institution_name: 'Instituto Demo', tenant_slug: 'i2-borrador', admin_email: 'admin@demo.edu',
   plan_slug: 'basico', region: 'us-east-1', engine: 'terraform', ...changes });
 
+test('diagnóstico de creación es de solo lectura y nunca habilita AWS', async () => {
+  const images = { list: async () => [
+    { role: 'frontend' }, { role: 'backend' }, { role: 'database' },
+  ] };
+  const service = new TenantsService({}, images);
+  const tenant = { slug: 'i5-diagnostico', status: 'PENDING', region: 'us-east-1', engine: 'terraform' };
+  const manager = { findOneBy: async () => tenant };
+  const ready = await service.creationReadiness(tenant.slug, manager);
+  assert.equal(ready.can_start, false);
+  assert.equal(ready.tenant_status, 'PENDING');
+  assert.equal(ready.checks.find(check => check.code === 'draft').status, 'ready');
+  assert.equal(ready.checks.find(check => check.code === 'images').status, 'ready');
+  assert.match(ready.checks.find(check => check.code === 'images').message, /comprobar.*AWS/);
+  for (const code of ['authorization', 'security_scan', 'engine', 'configuration', 'operations']) {
+    assert.equal(ready.checks.find(check => check.code === code).status, 'blocked');
+  }
+  assert.deepEqual(ready.pipeline.map(step => step.stage), ['authorize', 'scan', 'provision', 'configure', 'verify', 'register']);
+  assert.ok(ready.pipeline.every(step => step.status === 'not_started'));
+  images.list = async () => [{ role: 'frontend' }];
+  tenant.status = 'ACTIVE';
+  tenant.engine = 'cloudformation';
+  const blocked = await service.creationReadiness(tenant.slug, manager);
+  assert.equal(blocked.checks.find(check => check.code === 'draft').status, 'blocked');
+  assert.match(blocked.checks.find(check => check.code === 'images').message, /backend.*database/);
+  assert.match(blocked.checks.find(check => check.code === 'engine').message, /segundo motor/);
+  await assert.rejects(() => service.creationReadiness('../otro', manager));
+  await assert.rejects(() => service.creationReadiness('i5-ausente', { findOneBy: async () => null }));
+  images.list = async () => { throw new Error('imágenes no disponibles'); };
+  await assert.rejects(() => service.creationReadiness(tenant.slug, manager), /imágenes no disponibles/);
+});
+
+test('la creación continúa deshabilitada y no hay endpoint de ejecución', async () => {
+  const before = await countTenants();
+  const capabilities = await (await fetch(base + '/api/capabilities')).json();
+  assert.equal(capabilities.data.tenant_creation, false);
+  assert.equal(capabilities.data.orchestration, false);
+  const response = await fetch(base + '/api/tenants/i5-no-ejecutar/provision', { method: 'POST' });
+  assert.equal(response.status, 404);
+  const missing = await fetch(base + '/api/tenants/i5-no-existe/creation-readiness');
+  assert.equal(missing.status, 404);
+  assert.equal(await countTenants(), before);
+});
+
 test('borrador del Paso 1: se guarda con status PENDING y sin datos de infraestructura (transacción revertida)', async () => {
   const runner = database().createQueryRunner();
   await runner.connect();

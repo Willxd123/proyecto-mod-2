@@ -31,6 +31,11 @@ export class TenantsController {
     return { data: await this.tenants.createDraft(body) };
   }
 
+  @Get(':slug/creation-readiness')
+  async creationReadiness(@Param('slug') slug: string) {
+    return { data: await this.tenants.creationReadiness(slug) };
+  }
+
   /**
    * Integrante 2: genera output/tenants/<slug>/terraform.tfvars.json para Terraform/OpenTofu.
    * 404 si no existe, 409 si ya no es borrador (PENDING), 422 si el motor es de otro integrante o faltan AMIs.

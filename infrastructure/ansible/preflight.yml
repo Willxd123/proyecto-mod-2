@@ -1,0 +1,89 @@
+---
+# Comprobación de solo lectura; no configura ni despliega la aplicación.
+- name: Validar el inventario de un tenant
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  any_errors_fatal: true
+  tasks:
+    - name: Exigir un servidor distinto para cada rol y ningún host adicional
+      ansible.builtin.assert:
+        that:
+          - groups.get('frontend', []) | length == 1
+          - groups.get('backend', []) | length == 1
+          - groups.get('database', []) | length == 1
+          - groups.get('all', []) | length == 3
+          - (groups.get('frontend', []) + groups.get('backend', []) + groups.get('database', [])) | unique | list | length == 3
+        fail_msg: El inventario debe contener exactamente un host distinto por rol.
+
+    - name: Validar identidad y conectividad declaradas para cada host
+      ansible.builtin.assert:
+        that:
+          - hostvars[item].tenant_slug is defined
+          - hostvars[item].tenant_slug is match('^[a-z][a-z0-9-]{2,39}$')
+          - hostvars[item].tenant_slug == hostvars[groups['frontend'][0]].tenant_slug
+          - hostvars[item].ansible_host is defined
+          - hostvars[item].ansible_host | string | length > 0
+        fail_msg: Los hosts deben declarar el mismo tenant_slug válido y una dirección ansible_host.
+      loop: "{{ groups['frontend'] + groups['backend'] + groups['database'] }}"
+      loop_control:
+        label: "{{ item }}"
+
+- name: Verificar primer arranque e identidad de cada máquina
+  hosts: frontend:backend:database
+  gather_facts: false
+  any_errors_fatal: true
+  tasks:
+    - name: Esperar conexión SSH
+      ansible.builtin.wait_for_connection:
+        timeout: 120
+
+    - name: Esperar finalización correcta de cloud-init
+      ansible.builtin.command:
+        argv:
+          - timeout
+          - "300"
+          - cloud-init
+          - status
+          - --wait
+      changed_when: false
+      check_mode: false
+
+    - name: Leer identidad de la imagen
+      ansible.builtin.slurp:
+        src: /etc/campus-cloud/image.json
+      register: image_identity
+      no_log: true
+
+    - name: Leer identidad del primer arranque
+      ansible.builtin.slurp:
+        src: /etc/campus-cloud/tenant.env
+      register: tenant_identity
+      no_log: true
+
+    - name: Verificar que la máquina pertenece al tenant y rol esperados
+      ansible.builtin.assert:
+        that:
+          - (image_identity.content | b64decode | from_json).image_role == expected_role
+          - ('TENANT_SLUG=' ~ tenant_slug) in (tenant_identity.content | b64decode).splitlines()
+          - ('SERVER_ROLE=' ~ expected_role) in (tenant_identity.content | b64decode).splitlines()
+        fail_msg: La identidad de la imagen o del tenant no coincide con el inventario.
+        success_msg: Identidad de imagen y tenant comprobada.
+      vars:
+        expected_role: "{{ (group_names | intersect(['frontend', 'backend', 'database'])) | first }}"
+
+- name: Verificar disponibilidad local de PostgreSQL
+  hosts: database
+  gather_facts: false
+  tasks:
+    - name: Comprobar que PostgreSQL acepta conexiones locales
+      ansible.builtin.command:
+        argv:
+          - pg_isready
+          - -q
+          - -h
+          - /var/run/postgresql
+          - -p
+          - "5432"
+      changed_when: false
+      check_mode: false

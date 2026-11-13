@@ -1,0 +1,59 @@
+---
+# Prepara archivos locales; no modifica ni conecta con los servidores.
+- name: Preparar configuración de backend para un tenant
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    stage_root: "{{ playbook_dir }}/../../output/ansible-stage"
+  tasks:
+    - name: Validar las entradas requeridas
+      ansible.builtin.assert:
+        that:
+          - tenant_slug is defined
+          - tenant_slug is string
+          - tenant_slug is match('^[a-z][a-z0-9-]{2,39}\Z')
+          - institution_name is defined
+          - institution_name is string
+          - institution_name | trim | length > 0
+          - institution_name | length <= 200
+          - institution_name is not search('[\x00-\x1f\x7f]')
+          - tenant_plan_name is defined
+          - tenant_plan_name is string
+          - tenant_plan_name | trim | length > 0
+          - tenant_plan_name | length <= 100
+          - tenant_plan_name is not search('[\x00-\x1f\x7f]')
+          - frontend_server_name is defined
+          - frontend_server_name is string
+          - frontend_server_name | length <= 253
+          - >-
+            frontend_server_name is match('^([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,63}\Z')
+            or (frontend_server_name is match('^(0|[1-9][0-9]{0,2})(\.(0|[1-9][0-9]{0,2})){3}\Z')
+                and frontend_server_name.split('.') | map('int') | max <= 255)
+          - database_private_ip is defined
+          - database_private_ip is string
+          - database_private_ip is match('^(0|[1-9][0-9]{0,2})(\.(0|[1-9][0-9]{0,2})){3}\Z')
+          - database_private_ip.split('.') | map('int') | max <= 255
+          - backend_port is defined
+          - backend_port | string is match('^[0-9]{1,5}\Z')
+          - backend_port | int >= 1
+          - backend_port | int <= 65535
+        fail_msg: Se requieren identidad del tenant, dominio o IP del frontend, IPv4 de base de datos y puerto válido.
+
+    - name: Crear directorio local de preparación
+      ansible.builtin.file:
+        path: "{{ stage_root }}/{{ tenant_slug }}"
+        state: directory
+        mode: "0700"
+
+    - name: Generar variables no secretas
+      ansible.builtin.template:
+        src: templates/backend.env.j2
+        dest: "{{ stage_root }}/{{ tenant_slug }}/backend.env"
+        mode: "0600"
+
+    - name: Generar unidad systemd sin instalarla
+      ansible.builtin.template:
+        src: templates/backend.service.j2
+        dest: "{{ stage_root }}/{{ tenant_slug }}/backend.service"
+        mode: "0600"

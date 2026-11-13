@@ -1,0 +1,36 @@
+---
+- import_playbook: preflight.yml
+
+- name: Configurar PostgreSQL del tenant
+  hosts: database
+  become: true
+  gather_facts: false
+  any_errors_fatal: true
+  roles:
+    - database
+
+- name: Configurar backend de asistencia
+  hosts: backend
+  become: true
+  gather_facts: false
+  any_errors_fatal: true
+  roles:
+    - backend
+
+- import_playbook: legacy-credentials-check.yml
+
+- name: Configurar frontend de asistencia
+  hosts: frontend
+  become: true
+  gather_facts: false
+  any_errors_fatal: true
+  roles:
+    - frontend
+
+- name: Configurar métricas privadas de PostgreSQL
+  hosts: database
+  become: true
+  gather_facts: false
+  any_errors_fatal: true
+  roles:
+    - postgres_exporter

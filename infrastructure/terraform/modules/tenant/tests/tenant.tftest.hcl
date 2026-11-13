@@ -123,6 +123,10 @@ run "postgres_no_es_publico" {
   command = apply
 
   assert {
+    condition     = length(aws_vpc_security_group_ingress_rule.frontend_https) == 0
+    error_message = "HTTPS debe permanecer cerrado por defecto."
+  }
+  assert {
     condition     = aws_vpc_security_group_ingress_rule.database_postgres.referenced_security_group_id == aws_security_group.backend.id && aws_vpc_security_group_ingress_rule.database_postgres.cidr_ipv4 == null
     error_message = "5432 solo debe aceptar tráfico del SG del backend."
   }
@@ -141,6 +145,19 @@ run "postgres_no_es_publico" {
   assert {
     condition     = length(aws_nat_gateway.tenant) == 0 && length(aws_route_table.private.route) == 0
     error_message = "Sin enable_nat_gateway la subred privada no tiene salida a internet."
+  }
+}
+
+run "https_publico_opcional" {
+  command = plan
+
+  variables {
+    enable_frontend_https = true
+  }
+
+  assert {
+    condition     = length(aws_vpc_security_group_ingress_rule.frontend_https) == 1 && aws_vpc_security_group_ingress_rule.frontend_https[0].from_port == 443 && aws_vpc_security_group_ingress_rule.frontend_https[0].to_port == 443 && aws_vpc_security_group_ingress_rule.frontend_https[0].cidr_ipv4 == "0.0.0.0/0"
+    error_message = "Al activar HTTPS solo debe abrirse el puerto 443 del frontend."
   }
 }
 

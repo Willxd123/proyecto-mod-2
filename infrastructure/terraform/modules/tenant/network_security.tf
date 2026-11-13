@@ -141,6 +141,16 @@ resource "aws_vpc_security_group_ingress_rule" "frontend_http" {
   cidr_ipv4         = "0.0.0.0/0"
 }
 
+resource "aws_vpc_security_group_ingress_rule" "frontend_https" {
+  count             = var.enable_frontend_https ? 1 : 0
+  security_group_id = aws_security_group.frontend.id
+  description       = "HTTPS publico de la aplicacion"
+  ip_protocol       = "tcp"
+  from_port         = 443
+  to_port           = 443
+  cidr_ipv4         = "0.0.0.0/0"
+}
+
 resource "aws_vpc_security_group_ingress_rule" "frontend_ssh" {
   for_each          = toset(var.ssh_ingress_cidrs)
   security_group_id = aws_security_group.frontend.id

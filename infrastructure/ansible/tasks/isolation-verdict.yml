@@ -1,0 +1,16 @@
+---
+- name: Exigir marcadores propios presentes y ajenos ausentes
+  ansible.builtin.assert:
+    that:
+      - hostvars[groups['isolation_a'][0]].isolation_counts.query_result | length == 1
+      - hostvars[groups['isolation_b'][0]].isolation_counts.query_result | length == 1
+      - hostvars[groups['isolation_a'][0]].isolation_counts.query_result[0].a is integer
+      - hostvars[groups['isolation_a'][0]].isolation_counts.query_result[0].b is integer
+      - hostvars[groups['isolation_b'][0]].isolation_counts.query_result[0].a is integer
+      - hostvars[groups['isolation_b'][0]].isolation_counts.query_result[0].b is integer
+      - hostvars[groups['isolation_a'][0]].isolation_counts.query_result[0].a == 1
+      - hostvars[groups['isolation_a'][0]].isolation_counts.query_result[0].b == 0
+      - hostvars[groups['isolation_b'][0]].isolation_counts.query_result[0].a == 0
+      - hostvars[groups['isolation_b'][0]].isolation_counts.query_result[0].b == 1
+    fail_msg: La comparación falló; faltan marcadores propios o aparecen marcadores cruzados.
+    success_msg: Cada base contiene solo su marcador sintético; quedan pendientes otras pruebas de acceso.

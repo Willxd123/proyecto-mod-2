@@ -1,0 +1,10 @@
+---
+- import_playbook: preflight.yml
+
+- name: Configurar métricas privadas de PostgreSQL
+  hosts: database
+  become: true
+  gather_facts: false
+  any_errors_fatal: true
+  roles:
+    - postgres_exporter

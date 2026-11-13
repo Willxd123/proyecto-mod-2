@@ -1,0 +1,278 @@
+---
+- name: Validar entradas del frontend
+  ansible.builtin.assert:
+    that:
+      - tenant_slug is defined
+      - tenant_slug is string
+      - tenant_slug is match('^[a-z][a-z0-9-]{2,39}\Z')
+      - frontend_revision is defined
+      - frontend_revision is match('^[a-f0-9]{40}\Z')
+      - frontend_build_sha256 is defined
+      - frontend_build_sha256 is match('^[a-f0-9]{64}\Z')
+      - frontend_build_archive is defined
+      - frontend_build_archive is string
+      - frontend_build_archive | length > 0
+      - frontend_server_name is defined
+      - frontend_public_ip is defined
+      - frontend_server_name == frontend_public_ip
+      - frontend_server_name is match('^(0|[1-9][0-9]{0,2})(\.(0|[1-9][0-9]{0,2})){3}\Z')
+      - frontend_server_name.split('.') | map('int') | max <= 255
+      - backend_private_ip is defined
+      - backend_private_ip is match('^(0|[1-9][0-9]{0,2})(\.(0|[1-9][0-9]{0,2})){3}\Z')
+      - backend_private_ip.split('.') | map('int') | max <= 255
+      - backend_port is defined
+      - backend_port | string is match('^[0-9]{1,5}\Z')
+      - backend_port | int >= 1
+      - backend_port | int <= 65535
+      - certbot_email is defined
+      - certbot_email is match('^[^\s@]+@[^\s@]+\.[^\s@]+\Z')
+    fail_msg: Se requieren IP pública del inventario, backend, revisión, artefacto verificado y correo válidos.
+
+- name: Comprobar el checksum del artefacto local
+  ansible.builtin.stat:
+    path: "{{ frontend_build_archive }}"
+    checksum_algorithm: sha256
+  delegate_to: localhost
+  become: false
+  register: frontend_artifact
+
+- name: Exigir un artefacto con el checksum esperado
+  ansible.builtin.assert:
+    that:
+      - frontend_artifact.stat.isreg | default(false)
+      - frontend_artifact.stat.checksum | default('') == frontend_build_sha256
+    fail_msg: El artefacto no existe o su checksum no coincide.
+
+- name: Comprobar Nginx preinstalado
+  ansible.builtin.command:
+    argv: [/usr/sbin/nginx, -v]
+  changed_when: false
+
+- name: Detectar Certbot instalado
+  ansible.builtin.stat:
+    path: /snap/bin/certbot
+  register: frontend_certbot_binary
+
+- name: Instalar Certbot cuando la imagen no lo incluya
+  when: not frontend_certbot_binary.stat.exists
+  block:
+    - name: Comprobar que Snap está disponible
+      ansible.builtin.command:
+        argv: [/usr/bin/snap, version]
+      changed_when: false
+
+    - name: Instalar Certbot desde Snap
+      ansible.builtin.command:
+        argv: [/usr/bin/snap, install, certbot, --classic]
+
+- name: Comprobar versión de Certbot
+  ansible.builtin.command:
+    argv: [/snap/bin/certbot, --version]
+  changed_when: false
+  register: frontend_certbot_version
+
+- name: Exigir Certbot compatible con certificados de IP y webroot
+  ansible.builtin.assert:
+    that:
+      - frontend_certbot_version.stdout is search('certbot ([5-9]|[1-9][0-9]+)\.')
+      - >-
+        (frontend_certbot_version.stdout | regex_search('[0-9]+\\.[0-9]+')
+        is version('5.4', '>='))
+    fail_msg: Se requiere Certbot 5.4 o superior en /snap/bin/certbot.
+
+- name: Crear directorios del frontend y desafío ACME
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - "/var/www/campus-cloud/{{ tenant_slug }}/releases/{{ frontend_revision }}-{{ frontend_build_sha256 }}"
+    - "/var/lib/campus-cloud/{{ tenant_slug }}/acme"
+
+- name: Extraer frontend compilado
+  ansible.builtin.unarchive:
+    src: "{{ frontend_build_archive }}"
+    dest: "/var/www/campus-cloud/{{ tenant_slug }}/releases/{{ frontend_revision }}-{{ frontend_build_sha256 }}"
+    owner: root
+    group: root
+
+- name: Comprobar que existe la entrada de la aplicación
+  ansible.builtin.stat:
+    path: "/var/www/campus-cloud/{{ tenant_slug }}/releases/{{ frontend_revision }}-{{ frontend_build_sha256 }}/index.html"
+  register: frontend_index
+
+- name: Exigir index.html en la raíz del artefacto
+  ansible.builtin.assert:
+    that:
+      - frontend_index.stat.isreg | default(false)
+
+- name: Activar revisión del frontend
+  ansible.builtin.file:
+    src: "/var/www/campus-cloud/{{ tenant_slug }}/releases/{{ frontend_revision }}-{{ frontend_build_sha256 }}"
+    dest: "/var/www/campus-cloud/{{ tenant_slug }}/current"
+    state: link
+
+- name: Detectar certificado existente
+  ansible.builtin.stat:
+    path: "/etc/letsencrypt/live/campus-cloud-{{ tenant_slug }}/fullchain.pem"
+  register: frontend_certificate
+
+- name: Verificar certificado existente antes de usarlo
+  ansible.builtin.command:
+    argv:
+      - openssl
+      - x509
+      - -in
+      - "/etc/letsencrypt/live/campus-cloud-{{ tenant_slug }}/fullchain.pem"
+      - -noout
+      - -checkip
+      - "{{ frontend_server_name }}"
+      - -checkend
+      - "0"
+  changed_when: false
+  register: frontend_existing_certificate_check
+  failed_when: frontend_existing_certificate_check.rc != 0 or 'does NOT match' in frontend_existing_certificate_check.stdout
+  when: frontend_certificate.stat.exists
+
+- name: Preparar configuración Nginx
+  ansible.builtin.template:
+    src: nginx.conf.j2
+    dest: "/etc/nginx/sites-available/campus-cloud-{{ tenant_slug }}"
+    owner: root
+    group: root
+    mode: "0644"
+  vars:
+    frontend_tls_ready: "{{ frontend_certificate.stat.exists }}"
+  notify: Recargar Nginx
+
+- name: Habilitar configuración Nginx
+  ansible.builtin.file:
+    src: "/etc/nginx/sites-available/campus-cloud-{{ tenant_slug }}"
+    dest: "/etc/nginx/sites-enabled/campus-cloud-{{ tenant_slug }}"
+    state: link
+  notify: Recargar Nginx
+
+- name: Habilitar y arrancar Nginx
+  ansible.builtin.systemd_service:
+    name: nginx
+    enabled: true
+    state: started
+
+- name: Validar y aplicar configuración inicial
+  ansible.builtin.meta: flush_handlers
+
+- name: Solicitar certificado público de corta duración
+  when: not frontend_certificate.stat.exists
+  block:
+    - name: Emitir certificado con Certbot
+      ansible.builtin.command:
+        argv:
+          - /snap/bin/certbot
+          - certonly
+          - --non-interactive
+          - --agree-tos
+          - --email
+          - "{{ certbot_email }}"
+          - --preferred-profile
+          - shortlived
+          - --webroot
+          - --webroot-path
+          - "/var/lib/campus-cloud/{{ tenant_slug }}/acme"
+          - --ip-address
+          - "{{ frontend_server_name }}"
+          - --cert-name
+          - "campus-cloud-{{ tenant_slug }}"
+      no_log: true
+  rescue:
+    - name: Informar fallo de emisión
+      ansible.builtin.fail:
+        msg: Falló la emisión ACME; revisar conectividad, puerto 80 y logs privados de Certbot.
+
+- name: Verificar identidad y vigencia del certificado
+  ansible.builtin.command:
+    argv:
+      - openssl
+      - x509
+      - -in
+      - "/etc/letsencrypt/live/campus-cloud-{{ tenant_slug }}/fullchain.pem"
+      - -noout
+      - -checkip
+      - "{{ frontend_server_name }}"
+      - -checkend
+      - "0"
+  changed_when: false
+  register: frontend_certificate_check
+  failed_when: frontend_certificate_check.rc != 0 or 'does NOT match' in frontend_certificate_check.stdout
+
+- name: Activar HTTPS en Nginx
+  ansible.builtin.template:
+    src: nginx.conf.j2
+    dest: "/etc/nginx/sites-available/campus-cloud-{{ tenant_slug }}"
+    owner: root
+    group: root
+    mode: "0644"
+  vars:
+    frontend_tls_ready: true
+  notify: Recargar Nginx
+
+- name: Configurar renovación del certificado
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/campus-cloud-certbot-{{ tenant_slug }}.{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - service
+    - timer
+  register: frontend_renewal_units
+
+- name: Recargar systemd cuando cambien las unidades
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+  when: frontend_renewal_units.changed
+
+- name: Habilitar renovación automática
+  ansible.builtin.systemd_service:
+    name: "campus-cloud-certbot-{{ tenant_slug }}.timer"
+    enabled: true
+    state: started
+
+- name: Aplicar configuración HTTPS
+  ansible.builtin.meta: flush_handlers
+
+- name: Verificar cadena y nombre del certificado servido
+  ansible.builtin.command:
+    argv:
+      - timeout
+      - "20"
+      - openssl
+      - s_client
+      - -no_ign_eof
+      - -connect
+      - "127.0.0.1:443"
+      - -verify_ip
+      - "{{ frontend_server_name }}"
+      - -verify_return_error
+      - -CApath
+      - /etc/ssl/certs
+    stdin: "HEAD / HTTP/1.0\r\nHost: {{ frontend_server_name }}\r\nConnection: close\r\n\r\n"
+    stdin_add_newline: false
+  changed_when: false
+
+- name: Verificar la aplicación y el proxy por HTTPS
+  ansible.builtin.uri:
+    url: "https://127.0.0.1{{ item }}"
+    headers:
+      Host: "{{ frontend_server_name }}"
+    validate_certs: false
+    status_code: 200
+  loop:
+    - /
+    - /api/health
+  register: frontend_health
+  retries: 5
+  delay: 3
+  until: frontend_health.status == 200

@@ -1,6 +1,6 @@
 import { inject, Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import type { ApiList, GoldenImage, Plan, TenantDraftCreated, TenantDraftInput, TenantSummary, TenantTfvarsGenerated, TenantValidationResult } from '@modulo2/contracts';
+import type { ApiList, CreationReadiness, GoldenImage, Plan, TenantDraftCreated, TenantDraftInput, TenantSummary, TenantTfvarsGenerated, TenantValidationResult } from '@modulo2/contracts';
 
 @Injectable({ providedIn: 'root' })
 export class ApiService {
@@ -11,4 +11,5 @@ export class ApiService {
   validateTenant(body: { tenant_slug: string; admin_email: string }) { return this.http.post<{ data: TenantValidationResult }>('/api/tenants/validate', body); }
   createDraft(body: TenantDraftInput) { return this.http.post<{ data: TenantDraftCreated }>('/api/tenants/drafts', body); }
   generateTfvars(slug: string) { return this.http.post<{ data: TenantTfvarsGenerated }>(`/api/tenants/${encodeURIComponent(slug)}/tfvars`, {}); }
+  creationReadiness(slug: string) { return this.http.get<{ data: CreationReadiness }>(`/api/tenants/${encodeURIComponent(slug)}/creation-readiness`); }
 }

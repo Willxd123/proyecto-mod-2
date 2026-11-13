@@ -1,0 +1,130 @@
+---
+- name: Validar variables de conexión
+  ansible.builtin.assert:
+    that:
+      - backend_private_ip is defined
+      - backend_private_ip is string
+      - backend_private_ip is match('^(0|[1-9][0-9]{0,2})(\.(0|[1-9][0-9]{0,2})){3}\Z')
+      - backend_private_ip.split('.') | map('int') | max <= 255
+      - database_private_ip is defined
+      - database_private_ip is string
+      - database_private_ip is match('^(0|[1-9][0-9]{0,2})(\.(0|[1-9][0-9]{0,2})){3}\Z')
+      - database_private_ip.split('.') | map('int') | max <= 255
+      - vault_postgres_password is defined
+      - vault_postgres_password is string
+      - vault_postgres_password | length >= 20
+    fail_msg: Se requieren las IPv4 privadas de backend y base de datos y una contraseña de al menos 20 caracteres.
+  no_log: true
+
+- name: Detectar dependencia Python PostgreSQL
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/python3
+      - -c
+      - import psycopg2
+  changed_when: false
+  failed_when: false
+  register: psycopg_check
+
+- name: Exigir paquete local cuando falte la dependencia
+  ansible.builtin.assert:
+    that:
+      - postgresql_psycopg_deb is defined
+      - postgresql_psycopg_deb is string
+      - postgresql_psycopg_deb | length > 0
+    fail_msg: Falta psycopg2; indique postgresql_psycopg_deb con la ruta de un paquete Ubuntu compatible.
+  when: psycopg_check.rc != 0
+
+- name: Instalar dependencia desde paquete local sin acceso a Internet
+  when: psycopg_check.rc != 0
+  block:
+    - name: Crear directorio temporal
+      ansible.builtin.tempfile:
+        state: directory
+        prefix: i4-psycopg-
+      register: psycopg_temp
+
+    - name: Copiar paquete local
+      ansible.builtin.copy:
+        src: "{{ postgresql_psycopg_deb }}"
+        dest: "{{ psycopg_temp.path }}/psycopg.deb"
+        mode: "0600"
+
+    - name: Instalar paquete sin descargar dependencias
+      ansible.builtin.command:
+        argv:
+          - dpkg
+          - -i
+          - "{{ psycopg_temp.path }}/psycopg.deb"
+
+    - name: Verificar que la dependencia está disponible
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/python3
+          - -c
+          - import psycopg2
+      changed_when: false
+  always:
+    - name: Retirar directorio temporal creado para el paquete
+      ansible.builtin.file:
+        path: "{{ psycopg_temp.path }}"
+        state: absent
+      when: psycopg_temp.path is defined
+
+- name: Crear usuario de aplicación
+  community.postgresql.postgresql_user:
+    name: asistencia
+    password: "{{ vault_postgres_password }}"
+    role_attr_flags: NOSUPERUSER,NOCREATEDB,NOCREATEROLE,NOREPLICATION
+    login_unix_socket: /var/run/postgresql
+  environment:
+    PGOPTIONS: "-c password_encryption=scram-sha-256"
+  become_user: postgres
+  no_log: true
+
+- name: Crear base de datos de aplicación
+  community.postgresql.postgresql_db:
+    name: control_asistencia
+    owner: asistencia
+    login_unix_socket: /var/run/postgresql
+  become_user: postgres
+
+- name: Preparar extensión UUID para migraciones Django
+  community.postgresql.postgresql_ext:
+    name: uuid-ossp
+    db: control_asistencia
+    login_unix_socket: /var/run/postgresql
+  become_user: postgres
+
+- name: Permitir conexiones de red PostgreSQL
+  community.postgresql.postgresql_set:
+    name: listen_addresses
+    value: "localhost, {{ database_private_ip }}"
+    login_unix_socket: /var/run/postgresql
+  become_user: postgres
+  notify: Reiniciar PostgreSQL
+
+- name: Autorizar solo el backend del tenant en PostgreSQL
+  community.postgresql.postgresql_pg_hba:
+    dest: /etc/postgresql/16/main/pg_hba.conf
+    contype: host
+    databases: control_asistencia
+    users: asistencia
+    source: "{{ backend_private_ip }}/32"
+    method: scram-sha-256
+    create: false
+  notify: Recargar PostgreSQL
+
+- name: Aplicar cambios de PostgreSQL
+  ansible.builtin.meta: flush_handlers
+
+- name: Comprobar que PostgreSQL responde localmente
+  ansible.builtin.command:
+    argv:
+      - pg_isready
+      - -q
+      - -h
+      - /var/run/postgresql
+      - -p
+      - "5432"
+  changed_when: false

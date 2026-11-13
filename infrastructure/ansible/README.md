@@ -35,7 +35,7 @@ generando cargos. No se ha verificado su reanudación ni una IP pública nueva.
 | Integrar la creación desde el panel y comprobar suspensión/reanudación | Integrante 5: invocar Ansible con inventario, variables y secretos autorizados, comprobar servicios, persistencia y posible cambio de IP/certificado. Reiniciar EC2 no equivale a stop/start. |
 | Verificar métricas remotas | Integrante 6: acordar ubicación, transporte privado y reglas restringidas del recolector; comprobar targets y `pg_up`. |
 | Acordar interpretación de la guía | El correo `admin_email` crea al administrador, pero no existe la variable literal `TENANT_ADMIN_EMAIL`. La guía menciona un límite de estudiantes y el catálogo actual lo declara informativo: acordar el alcance sin afirmar que se aplica una cuota. |
-| Compartir y defender la entrega | Entregar comando, inventario esperado, variables y evidencia al equipo. Las últimas revisiones de asistencia están confirmadas solo localmente y deben compartirse por separado. Preparar la demostración con dos tenants. |
+| Compartir y defender la entrega | Entregar comando, inventario esperado, variables y evidencia al equipo. Las revisiones de asistencia están publicadas en ramas separadas; coordinar su revisión y fusión. Preparar la demostración con dos tenants. |
 
 `preflight.yml` es una comprobación preliminar de **solo lectura**: valida el
 inventario, espera SSH y cloud-init, compara el tenant y rol con los archivos
@@ -77,8 +77,12 @@ El orquestador todavía no lo ejecuta. Para integrarlo:
    junto con el checksum del frontend. La ejecución compara el checksum
    suministrado, pero esto no demuestra por sí solo la procedencia de ninguno
    de los artefactos: verificar y registrar su origen y revisión por separado.
-   Las revisiones de asistencia de la prueba están aún solo en repositorios
-   locales y deben compartirse mediante el proceso acordado.
+   Las revisiones usadas en la prueba están publicadas en la rama
+   `credenciales-iniciales-seguras` de ambos repositorios: backend
+   [`0a474740`](https://github.com/GBAC22/control-asistencia-backend/pull/1)
+   y frontend
+   [`940a98b8`](https://github.com/GBAC22/control-asistencia-frontend/pull/1).
+   Revisar el estado de los pull requests antes de integrar sus cambios.
 5. Custodiar fuera del repo el archivo Vault y su contraseña, la clave SSH y
    los secretos específicos de cada tenant. No pasar contraseñas en argumentos,
    eventos, user-data o logs. Proteger los archivos de variables e inventarios.

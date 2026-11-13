@@ -83,6 +83,13 @@ El orquestador todavía no lo ejecuta. Para integrarlo:
    y frontend
    [`940a98b8`](https://github.com/GBAC22/control-asistencia-frontend/pull/1).
    Revisar el estado de los pull requests antes de integrar sus cambios.
+   Para cada versión aprobada, generar los paquetes desde revisiones concretas
+   de los repositorios y entregar sus identificadores, las rutas de los
+   paquetes y el checksum del frontend al orquestador. No se descarga
+   automáticamente la última versión de `main`. El registro durable por
+   despliegue de las versiones de aplicación, plantillas y herramientas
+   requerido por RF-13 sigue pendiente de integración; declarar un commit
+   no demuestra por sí solo la procedencia del paquete.
 5. Custodiar fuera del repo el archivo Vault y su contraseña, la clave SSH y
    los secretos específicos de cada tenant. No pasar contraseñas en argumentos,
    eventos, user-data o logs. Proteger los archivos de variables e inventarios.
@@ -230,10 +237,10 @@ de prueba `i4-gary-prueba`: el endpoint y la cabecera mostraron la institución
 y el plan del request, y los registros sintéticos anteriores permanecieron.
 Una segunda ejecución del playbook completo terminó con `changed=0` en los
 tres hosts.
-Se utilizaron las revisiones locales de asistencia del backend
+Se utilizaron las revisiones de asistencia del backend
 `0a474740486e2978e09e2c582edff34e3d9876e8` y del frontend
-`940a98b8ba8fea570bffd1bfd501e9659e135765`; estas revisiones aún no se han
-publicado en los repositorios remotos. Se requieren versiones
+`940a98b8ba8fea570bffd1bfd501e9659e135765`; ambas están publicadas en sus
+repositorios remotos. Se requieren versiones
 compatibles de backend y frontend de asistencia con el endpoint `/api/tenant`.
 Ansible recibe `institution_name` y `tenant_plan_name` desde la solicitud
 autorizada (`institution_name` y `plan_snapshot.name` del contrato), además de

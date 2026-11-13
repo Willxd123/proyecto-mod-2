@@ -37,4 +37,14 @@ export interface CreationReadiness {
   checks: Array<{ code: string; status: 'ready' | 'blocked'; message: string }>;
   pipeline: Array<{ stage: string; description: string; status: 'not_started' }>;
 }
+export interface AssistanceArtifactInspection {
+  revisions: { backend: string; frontend: string };
+  ready: boolean;
+  release: string;
+}
+export interface AssistanceArtifactJob {
+  status: 'idle' | 'running' | 'succeeded' | 'failed';
+  result: AssistanceArtifactInspection | null;
+  error: string | null;
+}
 export * from './validation';

@@ -1,6 +1,6 @@
 import { inject, Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import type { ApiList, CreationReadiness, GoldenImage, Plan, TenantDraftCreated, TenantDraftInput, TenantSummary, TenantTfvarsGenerated, TenantValidationResult } from '@modulo2/contracts';
+import type { ApiList, AssistanceArtifactInspection, AssistanceArtifactJob, CreationReadiness, GoldenImage, Plan, TenantDraftCreated, TenantDraftInput, TenantSummary, TenantTfvarsGenerated, TenantValidationResult } from '@modulo2/contracts';
 
 @Injectable({ providedIn: 'root' })
 export class ApiService {
@@ -12,4 +12,9 @@ export class ApiService {
   createDraft(body: TenantDraftInput) { return this.http.post<{ data: TenantDraftCreated }>('/api/tenants/drafts', body); }
   generateTfvars(slug: string) { return this.http.post<{ data: TenantTfvarsGenerated }>(`/api/tenants/${encodeURIComponent(slug)}/tfvars`, {}); }
   creationReadiness(slug: string) { return this.http.get<{ data: CreationReadiness }>(`/api/tenants/${encodeURIComponent(slug)}/creation-readiness`); }
+  inspectArtifacts() { return this.http.get<{ data: AssistanceArtifactInspection }>('/api/assistance-artifacts/inspect', { headers: { 'X-Requested-With': 'TenantControlCenter' } }); }
+  artifactStatus() { return this.http.get<{ data: AssistanceArtifactJob }>('/api/assistance-artifacts/status', { headers: { 'X-Requested-With': 'TenantControlCenter' } }); }
+  prepareArtifacts(revisions: AssistanceArtifactInspection['revisions']) {
+    return this.http.post<{ data: AssistanceArtifactJob }>('/api/assistance-artifacts/prepare', revisions, { headers: { 'X-Requested-With': 'TenantControlCenter' } });
+  }
 }

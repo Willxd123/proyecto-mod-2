@@ -19,6 +19,7 @@ class GitignoreSensitiveTests(unittest.TestCase):
             'infrastructure/ansible/group_vars/all/vault.yml',
             'infrastructure/ansible/group_vars/all/vault-prod.yaml',
             'infrastructure/ansible/group_vars/all/secrets.yml',
+            'infrastructure/ansible/vars/private/artifact-sources.json',
             'private.pem',
             'application.log',
         )

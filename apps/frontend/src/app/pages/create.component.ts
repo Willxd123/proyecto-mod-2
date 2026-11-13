@@ -1,4 +1,4 @@
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, computed, inject, OnDestroy, signal } from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { forkJoin } from 'rxjs';
 import { HttpErrorResponse } from '@angular/common/http';
@@ -146,6 +146,12 @@ const ENGINES: { id: IaCEngine; label: string }[] = [
                 @if (savedDraft(); as saved) { <button class="btn" (click)="loadReadiness(saved.tenant_slug)" [disabled]="readinessLoading()">Actualizar diagnóstico</button> }
                 <a class="link" routerLink="/tenants">Ver en lista de tenants (RF-14) →</a>
               </div>
+              <div class="notice info" style="margin-top:16px">
+                Preparación local de paquetes de asistencia para demostración. No crea tenants ni autentica al operador.
+                <button class="btn" type="button" (click)="inspectArtifacts()" [disabled]="artifactBusy()">Comprobar paquetes</button>
+                @if (artifactMessage()) { <p role="status">{{ artifactMessage() }}</p> }
+                @if (artifactError()) { <p class="field-error" role="alert">{{ artifactError() }}</p> }
+              </div>
             </div>
           }
         </div>
@@ -181,8 +187,64 @@ const ENGINES: { id: IaCEngine; label: string }[] = [
     </section>
   `,
 })
-export class CreateComponent {
+export class CreateComponent implements OnDestroy {
   private readonly api = inject(ApiService);
+  private artifactTimer: ReturnType<typeof setTimeout> | undefined;
+  readonly artifactBusy = signal(false);
+  readonly artifactMessage = signal('');
+  readonly artifactError = signal('');
+  ngOnDestroy() { if (this.artifactTimer) clearTimeout(this.artifactTimer); }
+  private artifactFailure(error: HttpErrorResponse) {
+    this.artifactBusy.set(false);
+    this.artifactError.set(typeof error.error?.message === 'string' ? error.error.message : 'No se pudo completar la preparación local.');
+  }
+  inspectArtifacts() {
+    this.artifactBusy.set(true); this.artifactError.set(''); this.artifactMessage.set('Comprobando revisiones y paquetes…');
+    this.api.artifactStatus().subscribe({
+      next: ({ data }) => {
+        if (data.status === 'running') {
+          this.artifactMessage.set('Hay una preparación en curso…');
+          this.pollArtifacts();
+        } else {
+          this.checkArtifactRevisions();
+        }
+      },
+      error: (error: HttpErrorResponse) => this.artifactFailure(error),
+    });
+  }
+  private checkArtifactRevisions() {
+    this.api.inspectArtifacts().subscribe({
+      next: ({ data }) => {
+        if (data.ready) {
+          this.artifactBusy.set(false);
+          this.artifactMessage.set(`Paquetes verificados para backend ${data.revisions.backend} y frontend ${data.revisions.frontend}.`);
+          return;
+        }
+        const approved = window.confirm(`No existen paquetes para estas revisiones de main:\nBackend: ${data.revisions.backend}\nFrontend: ${data.revisions.frontend}\n\n¿Deseas descargarlas y preparar los paquetes localmente?`);
+        if (!approved) { this.artifactBusy.set(false); this.artifactMessage.set('Preparación cancelada.'); return; }
+        this.artifactMessage.set('Preparando paquetes; esto puede tardar varios minutos…');
+        this.api.prepareArtifacts(data.revisions).subscribe({
+          next: () => this.pollArtifacts(),
+          error: (error: HttpErrorResponse) => this.artifactFailure(error),
+        });
+      },
+      error: (error: HttpErrorResponse) => this.artifactFailure(error),
+    });
+  }
+  private pollArtifacts() {
+    this.api.artifactStatus().subscribe({
+      next: ({ data }) => {
+        if (data.status === 'running') { this.artifactTimer = setTimeout(() => this.pollArtifacts(), 2000); return; }
+        this.artifactBusy.set(false);
+        if (data.status === 'succeeded' && data.result) {
+          this.artifactMessage.set(`Paquetes preparados y verificados: ${data.result.release}.`);
+        } else {
+          this.artifactError.set(data.error || 'La preparación no terminó correctamente.');
+        }
+      },
+      error: (error: HttpErrorResponse) => this.artifactFailure(error),
+    });
+  }
   readonly roles = ROLES; readonly regions = REGIONS; readonly engines = ENGINES;
   readonly step = signal(1); readonly touched = signal(false);
   readonly name = signal(''); readonly slug = signal(''); readonly email = signal('');

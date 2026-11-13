@@ -5,6 +5,9 @@ export interface Plan { slug: string; name: string; description: string; max_stu
 export type CloudProvider = 'aws' | 'azure';
 export interface GoldenImage { role: ServerRole; provider: CloudProvider; region: string; ami_id: string; image_version: string; packer_version: string; built_at: string; source_revision: string; }
 export interface ApiList<T> { data: T[]; meta?: Record<string, unknown>; }
+/** Estados de la tabla tenants (CHECK tenants_status_check). PENDING = borrador guardado desde el Paso 1. */
+export type TenantStatus = 'PENDING' | 'PROVISIONING' | 'ACTIVE' | 'SUSPENDED' | 'ERROR';
+export const TENANT_STATUSES: TenantStatus[] = ['PENDING', 'PROVISIONING', 'ACTIVE', 'SUSPENDED', 'ERROR'];
 export interface TenantSummary { slug: string; name: string; plan_slug: string; environment: string; region: string; engine: string; status: string; access_url: string | null; }
 export interface DeploymentMetadata { application_revision: string; infrastructure_revision: string; engine_version: string; ansible_version: string; images: GoldenImage[]; plan_snapshot: Plan; }
 export type IaCEngine = 'terraform' | 'opentofu' | 'pulumi' | 'cloudformation';
@@ -27,3 +30,4 @@ export interface OperationEvent {
   schema_version: 1; operation_id: string; tenant_slug: string; operation_type: OperationType;
   status: OperationStatus; stage: string; occurred_at: string; message: string;
 }
+export * from './validation';

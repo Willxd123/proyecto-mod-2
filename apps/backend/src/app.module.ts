@@ -8,6 +8,7 @@ import { CatalogService } from './catalog/catalog.service';
 import { ImagesController } from './images/images.controller';
 import { ImagesService } from './images/images.service';
 import { TenantsController } from './tenants/tenants.controller';
+import { TenantsService } from './tenants/tenants.service';
 
 @Controller()
 class SystemController {
@@ -18,6 +19,6 @@ class SystemController {
 
 @Module({
   imports: [TypeOrmModule.forRoot(databaseOptions()), TypeOrmModule.forFeature([CatalogPlan, GoldenImageRecord, Tenant])],
-  controllers: [SystemController, CatalogController, ImagesController, TenantsController], providers: [CatalogService, ImagesService],
+  controllers: [SystemController, CatalogController, ImagesController, TenantsController], providers: [CatalogService, ImagesService, TenantsService],
 })
 export class AppModule {}

@@ -31,6 +31,11 @@ export class Tenant {
   @Column({ type: 'jsonb', default: {} }) resources!: Record<string, unknown>;
   @Column({ type: 'jsonb', default: {} }) deployment_metadata!: Record<string, unknown>;
   @Column({ type: 'timestamptz', default: () => 'CURRENT_TIMESTAMP' }) created_at!: Date;
+  // Integrante 2: identificador UUID (lo genera PostgreSQL) e IPs que completa el motor tras el apply.
+  @Column({ type: 'uuid', unique: true, insert: false, update: false, default: () => 'gen_random_uuid()' }) id!: string;
+  @Column({ type: 'inet', nullable: true }) frontend_public_ip!: string | null;
+  @Column({ type: 'inet', nullable: true }) backend_private_ip!: string | null;
+  @Column({ type: 'inet', nullable: true }) db_private_ip!: string | null;
 }
 
 @Entity('tenant_alerts')

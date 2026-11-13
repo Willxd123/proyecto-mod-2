@@ -88,7 +88,7 @@ def paths(tfvars):
 def operator_tfvars(tfvars, args):
     """Parámetros del operador: no secretos (la clave privada va solo como ruta)."""
     location = paths(tfvars)
-    return {
+    result = {
         'expected_account_id': account_id(args.account_id),
         'member_id': args.member_id,
         'ssh_ingress_cidrs': [ssh_cidr(c) for c in args.ssh_cidr],
@@ -98,6 +98,9 @@ def operator_tfvars(tfvars, args):
         'ssh_private_key_path': args.ssh_private_key_path or '',
         'state_reference': {'backend': 'local-workspace', 'key_or_stack': location['state'].relative_to(ROOT).as_posix()},
     }
+    if args.enable_frontend_https:
+        result['enable_frontend_https'] = True
+    return result
 
 
 def commands(binary, action, location, var_files, auto_approve):
@@ -134,6 +137,7 @@ def main(argv=None):
     parser.add_argument('--ssh-private-key-path', default=os.environ.get('SSH_PRIVATE_KEY_PATH', ''), help='Solo la ruta local para el inventario.')
     parser.add_argument('--member-id', default=os.environ.get('MEMBER_ID', 'integrante-2'))
     parser.add_argument('--enable-nat', action='store_true', help='NAT Gateway para la subred privada (factura por hora).')
+    parser.add_argument('--enable-frontend-https', action='store_true', help='Abrir HTTPS del frontend; repetir en cada plan/apply o conservarlo en el tfvars del tenant.')
     parser.add_argument('--binary', help='Ruta a terraform/tofu si no está en el PATH.')
     parser.add_argument('--yes', action='store_true', help='apply sin confirmación interactiva (para el orquestador).')
     parser.add_argument('--confirm', default='', help='destroy: repetir el tenant_id para confirmar.')

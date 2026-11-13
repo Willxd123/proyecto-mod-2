@@ -1,0 +1,8 @@
+[Unit]
+Description=Renovacion del certificado de {{ tenant_slug }}
+After=network-online.target nginx.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/snap/bin/certbot renew --cert-name campus-cloud-{{ tenant_slug }} --deploy-hook "/usr/bin/systemctl reload nginx"

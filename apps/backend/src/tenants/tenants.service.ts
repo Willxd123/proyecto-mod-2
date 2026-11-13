@@ -5,7 +5,7 @@ import { relative, resolve } from 'node:path';
 import { EntityManager, QueryFailedError, Repository } from 'typeorm';
 import {
   SERVER_ROLES, TENANT_SLUG_PATTERN, validateTenantFormat,
-  type TenantDraftCreated, type TenantTfvars, type TenantTfvarsGenerated, type TenantValidationError, type TenantValidationResult,
+  type CreationReadiness, type TenantDraftCreated, type TenantTfvars, type TenantTfvarsGenerated, type TenantValidationError, type TenantValidationResult,
 } from '@modulo2/contracts';
 import { CatalogPlan, Tenant } from '../database/entities';
 import { ImagesService } from '../images/images.service';
@@ -80,6 +80,41 @@ export class TenantsService {
     }
     const saved = await manager.findOneByOrFail(Tenant, { slug: result.tenant_slug });
     return { id: saved.id, tenant_slug: saved.slug, status: 'PENDING' };
+  }
+
+  async creationReadiness(slug: string, manager: EntityManager = this.repository.manager): Promise<CreationReadiness> {
+    if (!TENANT_SLUG_PATTERN.test(slug)) throw new NotFoundException('No existe un tenant con ese identificador.');
+    const tenant = await manager.findOneBy(Tenant, { slug });
+    if (!tenant) throw new NotFoundException('No existe un tenant con ese identificador.');
+    const images = await this.images.list(tenant.region);
+    const missing = SERVER_ROLES.filter(role => !images.some(image => image.role === role));
+    const principal = tenant.engine === 'terraform' || tenant.engine === 'opentofu';
+    return {
+      tenant_slug: tenant.slug,
+      tenant_status: tenant.status,
+      can_start: false,
+      checks: [
+        { code: 'draft', status: tenant.status === 'PENDING' ? 'ready' : 'blocked',
+          message: tenant.status === 'PENDING' ? 'Borrador guardado; no se han creado recursos.' : `El tenant está en estado ${tenant.status}, no es un borrador.` },
+        { code: 'images', status: missing.length ? 'blocked' : 'ready',
+          message: missing.length ? `Faltan AMIs registradas para: ${missing.join(', ')}.` : 'Hay AMIs registradas para los tres roles; falta comprobar su disponibilidad en AWS.' },
+        { code: 'authorization', status: 'blocked', message: 'Falta autenticación y autorización del operador para ejecutar operaciones cloud.' },
+        { code: 'security_scan', status: 'blocked', message: 'Falta integrar y ejecutar el escáner real antes del despliegue.' },
+        { code: 'engine', status: 'blocked', message: principal
+          ? 'El motor principal aún no está conectado al orquestador ni a la verificación de cuenta y propiedad.'
+          : 'El segundo motor aún no está conectado al orquestador.' },
+        { code: 'configuration', status: 'blocked', message: 'Falta integrar el inventario, Ansible, secretos y comprobaciones posteriores.' },
+        { code: 'operations', status: 'blocked', message: 'Faltan trabajos persistentes, bloqueo por tenant y recuperación tras reinicios.' },
+      ],
+      pipeline: [
+        { stage: 'authorize', status: 'not_started', description: 'Autorizar al operador y verificar solicitud y cuenta AWS.' },
+        { stage: 'scan', status: 'not_started', description: 'Ejecutar el escáner de seguridad y detenerse ante hallazgos bloqueantes.' },
+        { stage: 'provision', status: 'not_started', description: 'Ejecutar el motor del tenant y validar sus recursos e inventario.' },
+        { stage: 'configure', status: 'not_started', description: 'Esperar cloud-init y configurar los servicios con Ansible.' },
+        { stage: 'verify', status: 'not_started', description: 'Comprobar servicios y acceso antes de marcar el tenant activo.' },
+        { stage: 'register', status: 'not_started', description: 'Registrar metadatos reales y targets de monitoreo autorizados.' },
+      ],
+    };
   }
 
   /**

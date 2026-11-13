@@ -1,0 +1,21 @@
+---
+# Ejemplo no desplegable: sustituir rutas, revisiones, checksum y correos.
+# Las direcciones privadas, el puerto y frontend_public_ip vienen del inventario.
+frontend_server_name: "{{ frontend_public_ip }}"
+
+admin_name: Administrador de la institucion
+admin_email: admin@example.test
+certbot_email: certbot@example.test
+institution_name: Institucion de ejemplo
+tenant_plan_name: Basico
+
+backend_revision: "0000000000000000000000000000000000000000"
+backend_source_archive: /ruta/controlador/backend-source.tar.gz
+backend_wheels_archive: /ruta/controlador/backend-wheels.tar.gz
+
+frontend_revision: "0000000000000000000000000000000000000000"
+frontend_build_archive: /ruta/controlador/frontend-build.tar.gz
+frontend_build_sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+
+# Si la imagen de base de datos no incluye psycopg2, indicar el paquete local:
+# postgresql_psycopg_deb: /ruta/controlador/python3-psycopg2.deb

@@ -60,6 +60,10 @@ variable "backend_port" {
   type    = number
   default = 8000
 }
+variable "enable_frontend_https" {
+  type    = bool
+  default = false
+}
 variable "vpc_cidr" {
   type    = string
   default = "10.20.0.0/16"

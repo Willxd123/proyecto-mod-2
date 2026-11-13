@@ -24,7 +24,7 @@ TFVARS = {
 
 def args(**overrides):
     base = dict(account_id='123456789012', member_id='integrante-2', ssh_cidr=['8.8.8.8/32'], monitoring_cidr=[],
-                enable_nat=False, ssh_private_key_path='C:/claves/practico7-asistencia.pem')
+                enable_nat=False, enable_frontend_https=False, ssh_private_key_path='C:/claves/practico7-asistencia.pem')
     base.update(overrides)
     return argparse.Namespace(**base)
 
@@ -82,6 +82,11 @@ class TerraformTenantTests(unittest.TestCase):
         self.assertNotEqual(other['work'], tt.paths(tfvars)['work'])
         with self.assertRaises(ValueError):
             tt.operator_tfvars(tfvars, args(account_id='12'))
+
+    def test_https_is_opt_in_and_does_not_override_tenant_tfvars_by_default(self):
+        _, tfvars = tt.load_tfvars(self.write(enable_frontend_https=True))
+        self.assertNotIn('enable_frontend_https', tt.operator_tfvars(tfvars, args()))
+        self.assertTrue(tt.operator_tfvars(tfvars, args(enable_frontend_https=True))['enable_frontend_https'])
 
     def test_commands_select_tenant_workspace_before_running(self):
         _, tfvars = tt.load_tfvars(self.write())

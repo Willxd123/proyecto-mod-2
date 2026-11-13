@@ -11,7 +11,7 @@ Monorepo académico del panel administrador de tenants de la plataforma multi-te
 | M0 — Base compartida (monorepo, catálogo, contratos, panel) | Integrante 1 | Completo |
 | M1 — Golden Images y primer arranque | Integrante 1 | **Completo**: 3 AMIs construidas en `us-east-1` y verificadas con smoke test (evidencia en `docs/image.png`) |
 | M2 — Dos motores IaC compatibles | Integrantes 2 y 3 | Pendiente |
-| M3 — Aplicación de asistencia por institución | Integrante 4 | Pendiente |
+| M3 — Aplicación de asistencia por institución | Integrante 4 | **Parcial**: configuración y asistencia verificadas en un tenant de prueba AWS; falta aislamiento entre dos tenants e integración. Ver [avance y dependencias](infrastructure/ansible/README.md#avance-del-integrante-4). |
 | M4 — Orquestación y ciclo de vida | Integrante 5 | Pendiente |
 | M5 — Observabilidad por tenant | Integrante 6 | Pendiente |
 

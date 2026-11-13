@@ -1,0 +1,74 @@
+---
+# Solo lectura. Requiere dos instalaciones de prueba y marcadores sintéticos.
+- name: Validar datos para la comparación de tenants
+  hosts: localhost
+  gather_facts: false
+  any_errors_fatal: true
+  tasks:
+    - name: Exigir dos hosts y marcadores sintéticos distintos
+      ansible.builtin.assert:
+        that:
+          - groups.get('isolation_a', []) | length == 1
+          - groups.get('isolation_b', []) | length == 1
+          - groups.get('all', []) | length == 2
+          - groups['isolation_a'][0] != groups['isolation_b'][0]
+          - isolation_marker_a is defined
+          - isolation_marker_a is string
+          - isolation_marker_a is match('^I4-ISO-[A-Za-z0-9-]{8,40}\Z')
+          - isolation_marker_b is defined
+          - isolation_marker_b is string
+          - isolation_marker_b is match('^I4-ISO-[A-Za-z0-9-]{8,40}\Z')
+          - isolation_marker_a != isolation_marker_b
+          - hostvars[groups['isolation_a'][0]].tenant_slug is defined
+          - hostvars[groups['isolation_b'][0]].tenant_slug is defined
+          - hostvars[groups['isolation_a'][0]].tenant_slug is match('^[a-z][a-z0-9-]{2,39}\Z')
+          - hostvars[groups['isolation_b'][0]].tenant_slug is match('^[a-z][a-z0-9-]{2,39}\Z')
+          - hostvars[groups['isolation_a'][0]].tenant_slug != hostvars[groups['isolation_b'][0]].tenant_slug
+        fail_msg: Se requieren dos hosts, tenants y marcadores sintéticos distintos.
+      no_log: true
+
+- name: Consultar marcadores en cada base de datos
+  hosts: isolation_a:isolation_b
+  gather_facts: false
+  become: true
+  any_errors_fatal: true
+  tasks:
+    - name: Leer identidad declarada en el primer arranque
+      ansible.builtin.slurp:
+        src: /etc/campus-cloud/tenant.env
+      register: isolation_identity
+      no_log: true
+
+    - name: Exigir identidad y rol database correctos
+      ansible.builtin.assert:
+        that:
+          - ('TENANT_SLUG=' ~ tenant_slug) in (isolation_identity.content | b64decode).splitlines()
+          - "'SERVER_ROLE=database' in (isolation_identity.content | b64decode).splitlines()"
+        fail_msg: La identidad de la instancia no coincide con el inventario.
+      no_log: true
+
+    - name: Consultar solo conteos de los dos registros sintéticos
+      community.postgresql.postgresql_query:
+        login_unix_socket: /var/run/postgresql
+        db: control_asistencia
+        query: >-
+          SELECT count(*) FILTER (WHERE numero_registro = %(marker_a)s) AS a,
+                 count(*) FILTER (WHERE numero_registro = %(marker_b)s) AS b
+          FROM estudiantes
+        named_args:
+          marker_a: "{{ isolation_marker_a }}"
+          marker_b: "{{ isolation_marker_b }}"
+      environment:
+        PGOPTIONS: "-c default_transaction_read_only=on"
+      become_user: postgres
+      register: isolation_counts
+      changed_when: false
+      no_log: true
+
+- name: Evaluar la comparación de las dos bases
+  hosts: localhost
+  gather_facts: false
+  any_errors_fatal: true
+  tasks:
+    - name: Evaluar presencia propia y ausencia cruzada
+      ansible.builtin.import_tasks: tasks/isolation-verdict.yml

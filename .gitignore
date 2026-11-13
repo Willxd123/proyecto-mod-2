@@ -14,7 +14,14 @@ __pycache__/
 .terraform/
 Pulumi.*.yaml
 !Pulumi.example.yaml
-*.auto.tfvars
+# Variables y planes locales pueden contener datos sensibles.
+*.tfvars
+*.tfvars.json
+!*.example.tfvars
+!*.example.tfvars.json
+tfplan
+tfplan.*
+*.tfplan
 *.pkrvars.hcl
 !*.example.pkrvars.hcl
 infrastructure/packer/output/
@@ -38,6 +45,18 @@ infrastructure/terraform/modules/tenant/.terraform.lock.hcl
 infrastructure/terraform/modules/tenant/.work/
 infrastructure/terraform/modules/tenant/tests/.out/
 inventories/
+
+# Archivos locales de Ansible: contraseñas de Vault, variables privadas y reintentos.
+.vault_pass*
+.vault_password*
+.vault-password*
+vault-password
+infrastructure/ansible/vars/private/
+infrastructure/ansible/**/secrets.yml
+infrastructure/ansible/**/secrets.yaml
+infrastructure/ansible/**/vault*.yml
+infrastructure/ansible/**/vault*.yaml
+*.retry
 
 # Logs
 *.log

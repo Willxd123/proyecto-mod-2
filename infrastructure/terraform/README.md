@@ -60,7 +60,14 @@ Terraform y OpenTofu no pueden compartir un lockfile (cada uno elimina las entra
 | Entradas inválidas | Se rechazan `plan_type` fuera del catálogo, discos < 12 GiB, AMIs mal formadas, motores de otro integrante, `tenant_id` inválido y SSH `0.0.0.0/0`. |
 | Etiquetas | `Project`, `MemberId`, `TenantId`, `RunId` (UUID del borrador), `Plan`, `ManagedBy` en todos los recursos. |
 | Subred privada sin internet | Por defecto. `--enable-nat` crea un NAT Gateway (factura por hora). |
+| HTTPS | `enable_frontend_https` abre el puerto 443 del frontend únicamente si se activa explícitamente; por defecto está cerrado. No instala ni renueva certificados ni configura Nginx. |
 | Exporters | 9100 (los tres roles) y 9187 (base de datos) cerrados hasta indicar `--monitoring-cidr` del recolector (integrante 6). |
+
+Para habilitar 443 con el script, agrega `--enable-frontend-https` al plan y al
+apply. La opción no es persistente: debe repetirse en cada operación posterior
+que calcule cambios, o conservarse como `"enable_frontend_https": true` en el
+tfvars local del tenant. Si se regenera ese archivo, revisa el plan antes de
+aplicarlo para evitar cerrar 443 accidentalmente. La opción no configura TLS.
 
 ## Estado por tenant (workspaces)
 

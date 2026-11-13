@@ -143,6 +143,12 @@ variable "member_id" {
   }
 }
 
+variable "enable_frontend_https" {
+  description = "Permitir HTTPS publico al frontend cuando se configure TLS."
+  type        = bool
+  default     = false
+}
+
 variable "ssh_ingress_cidrs" {
   description = "IPs públicas autorizadas a entrar por SSH al frontend (bastión). Nunca 0.0.0.0/0."
   type        = list(string)

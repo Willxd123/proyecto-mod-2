@@ -15,7 +15,21 @@ Los contratos de lectura entregados por integrante 1 usan JSON, rutas sin barra 
 | `GET /api/tenants` | Lista real de registros, inicialmente vacía. `meta.creation_enabled=false`. |
 | `GET /api/capabilities` | Funciones implementadas y pendientes. |
 
-No se implementan todavía POST/PATCH/DELETE ni transmisión de logs. Nest responde 404 a las rutas de escritura ausentes. La API no recibe ni ejecuta comandos del navegador. Los errores de registro de AMIs no revelan rutas del sistema ni contenido de archivos.
+La API implementa validación, guardado de borradores y generación de tfvars,
+pero todavía no ejecuta creación ni operaciones de ciclo de vida, ni transmite
+logs. Nest responde 404 a las rutas de escritura ausentes. La API no recibe ni
+ejecuta comandos del navegador. Los errores de registro de AMIs no revelan
+rutas del sistema ni contenido de archivos.
+
+El diagnóstico `GET /api/tenants/:slug/creation-readiness` consulta un tenant
+guardado y muestra requisitos listos o bloqueados. Es de solo lectura: no
+comprueba la disponibilidad real de AMIs en AWS, no ejecuta el escáner ni
+crea trabajos o recursos. Devuelve `can_start=false` mientras no existan
+autenticación, escáner, orquestación, controles de concurrencia y configuración
+de Ansible integrados. No representa estado de ejecución ni sustituye un
+registro durable de trabajos.
+La respuesta también enumera las etapas previstas en orden, todas con estado
+`not_started`: es un plan informativo, no un worker ni una ejecución.
 
 La base del formulario de la plantilla ya está implementada y descarga un contrato `DeploymentRequest` marcado `deployable=false`. No persiste datos de contacto en el navegador ni agrega registros a `tenants`. La validación compartida está en `packages/contracts/src/validation.ts`; el integrante 2 debe aplicar también validación autoritativa en servidor al habilitar creación.
 

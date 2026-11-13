@@ -30,4 +30,11 @@ export interface OperationEvent {
   schema_version: 1; operation_id: string; tenant_slug: string; operation_type: OperationType;
   status: OperationStatus; stage: string; occurred_at: string; message: string;
 }
+export interface CreationReadiness {
+  tenant_slug: string;
+  tenant_status: string;
+  can_start: false;
+  checks: Array<{ code: string; status: 'ready' | 'blocked'; message: string }>;
+  pipeline: Array<{ stage: string; description: string; status: 'not_started' }>;
+}
 export * from './validation';

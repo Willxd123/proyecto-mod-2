@@ -16,28 +16,29 @@ resource "terraform_data" "workspace_guard" {
 module "tenant" {
   source = "../terraform/modules/tenant"
 
-  tenant_id            = var.tenant_id
-  tenant_name          = var.tenant_name
-  plan_type            = var.plan_type
-  plan_capacity        = var.plan_capacity
-  region               = var.region
-  frontend_ami_id      = var.frontend_ami_id
-  backend_ami_id       = var.backend_ami_id
-  database_ami_id      = var.database_ami_id
-  engine               = var.engine
-  request_id           = var.request_id
-  key_pair_name        = var.key_pair_name
-  ssh_authorized_keys  = var.ssh_authorized_keys
-  member_id            = var.member_id
-  ssh_ingress_cidrs    = var.ssh_ingress_cidrs
-  monitoring_cidrs     = var.monitoring_cidrs
-  backend_port         = var.backend_port
-  vpc_cidr             = var.vpc_cidr
-  availability_zone    = var.availability_zone
-  enable_nat_gateway   = var.enable_nat_gateway
-  inventory_dir        = var.inventory_dir
-  ssh_private_key_path = var.ssh_private_key_path
-  state_reference      = var.state_reference
+  tenant_id             = var.tenant_id
+  tenant_name           = var.tenant_name
+  plan_type             = var.plan_type
+  plan_capacity         = var.plan_capacity
+  region                = var.region
+  frontend_ami_id       = var.frontend_ami_id
+  backend_ami_id        = var.backend_ami_id
+  database_ami_id       = var.database_ami_id
+  engine                = var.engine
+  request_id            = var.request_id
+  key_pair_name         = var.key_pair_name
+  ssh_authorized_keys   = var.ssh_authorized_keys
+  member_id             = var.member_id
+  ssh_ingress_cidrs     = var.ssh_ingress_cidrs
+  monitoring_cidrs      = var.monitoring_cidrs
+  backend_port          = var.backend_port
+  enable_frontend_https = var.enable_frontend_https
+  vpc_cidr              = var.vpc_cidr
+  availability_zone     = var.availability_zone
+  enable_nat_gateway    = var.enable_nat_gateway
+  inventory_dir         = var.inventory_dir
+  ssh_private_key_path  = var.ssh_private_key_path
+  state_reference       = var.state_reference
 }
 
 output "provisioning_result" {

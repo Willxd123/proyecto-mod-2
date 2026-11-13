@@ -1,0 +1,12 @@
+---
+- import_playbook: preflight.yml
+
+- import_playbook: legacy-credentials-check.yml
+
+- name: Configurar frontend de asistencia
+  hosts: frontend
+  become: true
+  gather_facts: false
+  any_errors_fatal: true
+  roles:
+    - frontend

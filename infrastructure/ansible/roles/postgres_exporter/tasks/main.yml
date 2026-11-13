@@ -1,0 +1,65 @@
+---
+- name: Verificar que la imagen contiene el exporter
+  ansible.builtin.stat:
+    path: /usr/bin/prometheus-postgres-exporter
+  register: postgres_exporter_binary
+
+- name: Exigir el exporter preinstalado en la imagen
+  ansible.builtin.assert:
+    that:
+      - postgres_exporter_binary.stat.exists
+      - postgres_exporter_binary.stat.executable
+    fail_msg: La imagen database no contiene prometheus-postgres-exporter ejecutable.
+
+- name: Verificar usuario de servicio incluido en la imagen
+  ansible.builtin.command:
+    argv:
+      - id
+      - -u
+      - prometheus
+  changed_when: false
+
+- name: Crear usuario de monitoreo PostgreSQL sin contraseña
+  community.postgresql.postgresql_user:
+    name: prometheus
+    role_attr_flags: LOGIN,NOSUPERUSER,NOCREATEDB,NOCREATEROLE,NOREPLICATION
+    login_unix_socket: /var/run/postgresql
+  become_user: postgres
+
+- name: Conceder rol de monitoreo PostgreSQL
+  community.postgresql.postgresql_membership:
+    groups:
+      - pg_monitor
+    target_roles:
+      - prometheus
+    login_unix_socket: /var/run/postgresql
+  become_user: postgres
+
+- name: Configurar exporter para socket local y escucha loopback
+  ansible.builtin.template:
+    src: prometheus-postgres-exporter.j2
+    dest: /etc/default/prometheus-postgres-exporter
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reiniciar exporter PostgreSQL
+
+- name: Aplicar configuración del exporter
+  ansible.builtin.meta: flush_handlers
+
+- name: Habilitar y arrancar exporter
+  ansible.builtin.systemd_service:
+    name: prometheus-postgres-exporter
+    enabled: true
+    state: started
+
+- name: Comprobar métricas locales de PostgreSQL
+  ansible.builtin.uri:
+    url: http://127.0.0.1:9187/metrics
+    return_content: true
+    status_code: 200
+  register: postgres_exporter_metrics
+  retries: 10
+  delay: 3
+  until: postgres_exporter_metrics.status == 200 and (postgres_exporter_metrics.content | regex_search('(?m)^pg_up 1$')) is not none
+  changed_when: false

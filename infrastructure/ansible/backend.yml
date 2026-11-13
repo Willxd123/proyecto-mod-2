@@ -1,0 +1,10 @@
+---
+- import_playbook: preflight.yml
+
+- name: Configurar backend de asistencia
+  hosts: backend
+  become: true
+  gather_facts: false
+  any_errors_fatal: true
+  roles:
+    - backend

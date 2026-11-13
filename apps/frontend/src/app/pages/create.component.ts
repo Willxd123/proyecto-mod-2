@@ -2,7 +2,7 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { forkJoin } from 'rxjs';
 import { HttpErrorResponse } from '@angular/common/http';
-import { EMAIL_PATTERN, TENANT_SLUG_PATTERN, type GoldenImage, type IaCEngine, type Plan, type TenantDraftCreated, type TenantValidationError } from '@modulo2/contracts';
+import { EMAIL_PATTERN, TENANT_SLUG_PATTERN, type CreationReadiness, type GoldenImage, type IaCEngine, type Plan, type TenantDraftCreated, type TenantValidationError } from '@modulo2/contracts';
 import { ApiService } from '../api.service';
 import { ROLES } from './plans.component';
 
@@ -120,9 +120,30 @@ const ENGINES: { id: IaCEngine; label: string }[] = [
                 <div class="mini"><small style="color:var(--faint)">Motor IaC (RF-13)</small><br><b class="mono">{{ engine() }}</b></div>
                 <div class="mini"><small style="color:var(--faint)">Config. y monitoreo</small><br><b class="mono">Ansible + Grafana</b></div>
               </div>
-              <div class="console"><div class="muted"># El orquestador (Integrante 5) todavía no está conectado; no se simula ninguna ejecución.</div><div class="cmd">$ tenant={{ slugOrPlaceholder() }} plan={{ planSlug() }} engine={{ engine() }} region={{ region() }}</div></div>
+              <div class="console">
+                <div class="muted">Diagnóstico de solo lectura: no ejecuta escaneos, IaC, Ansible ni crea recursos.</div>
+                @if (savedDraft(); as saved) {
+                  <div class="cmd">Borrador consultado: {{ saved.tenant_slug }}</div>
+                  @if (readiness(); as result) {
+                    @for (check of result.checks; track check.code) {
+                      <div>[{{ check.status === 'ready' ? 'LISTO' : 'BLOQUEADO' }}] {{ check.message }}</div>
+                    }
+                    <div class="muted">Etapas previstas; ninguna se ha ejecutado:</div>
+                    @for (stage of result.pipeline; track stage.stage) {
+                      <div>[NO INICIADO] {{ stage.description }}</div>
+                    }
+                  } @else if (readinessLoading()) {
+                    <div>Consultando requisitos…</div>
+                  } @else {
+                    <div>No se pudo consultar el diagnóstico. Vuelve a intentarlo.</div>
+                  }
+                } @else {
+                  <div>Guarda primero el borrador para consultar sus requisitos.</div>
+                }
+              </div>
               <div class="actions" style="margin-top:16px;border:0;padding:0">
                 <button class="btn primary" disabled title="Disponible cuando el orquestador esté integrado">Iniciar aprovisionamiento en 2.º plano</button>
+                @if (savedDraft(); as saved) { <button class="btn" (click)="loadReadiness(saved.tenant_slug)" [disabled]="readinessLoading()">Actualizar diagnóstico</button> }
                 <a class="link" routerLink="/tenants">Ver en lista de tenants (RF-14) →</a>
               </div>
             </div>
@@ -199,6 +220,14 @@ export class CreateComponent {
 
   /** Guarda el borrador (status PENDING) con POST /api/tenants/drafts. El servidor vuelve a validar todo. */
   readonly saving = signal(false); readonly savedDraft = signal<TenantDraftCreated | null>(null); readonly tfvarsPath = signal('');
+  readonly readiness = signal<CreationReadiness | null>(null); readonly readinessLoading = signal(false);
+  loadReadiness(slug: string) {
+    this.readiness.set(null); this.readinessLoading.set(true);
+    this.api.creationReadiness(slug).subscribe({
+      next: ({ data }) => { this.readiness.set(data); this.readinessLoading.set(false); },
+      error: () => { this.readinessLoading.set(false); },
+    });
+  }
   saveDraft() {
     this.touched.set(true);
     if (!this.name().trim() || !this.slugValid() || !this.emailValid()) { this.step.set(1); return; }
@@ -206,7 +235,7 @@ export class CreateComponent {
     this.api.createDraft({ institution_name: this.name().trim(), tenant_slug: this.slug().trim(), admin_email: this.email().trim(),
       plan_slug: this.planSlug(), region: this.region(), engine: this.engine() }).subscribe({
       next: ({ data }) => {
-        this.saving.set(false); this.savedDraft.set(data);
+        this.saving.set(false); this.savedDraft.set(data); this.loadReadiness(data.tenant_slug);
         // Motor principal (Terraform/OpenTofu): genera el tfvars del tenant para scripts/terraform_tenant.py.
         if (this.engine() === 'terraform' || this.engine() === 'opentofu') {
           this.api.generateTfvars(data.tenant_slug).subscribe({

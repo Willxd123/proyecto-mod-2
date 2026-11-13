@@ -85,8 +85,9 @@ El orquestador todavía no lo ejecuta. Para integrarlo:
    Revisar el estado de los pull requests antes de integrar sus cambios.
    Para cada versión aprobada, generar los paquetes desde revisiones concretas
    de los repositorios y entregar sus identificadores, las rutas de los
-   paquetes y el checksum del frontend al orquestador. No se descarga
-   automáticamente la última versión de `main`. El registro durable por
+   paquetes y el checksum del frontend al orquestador. La preparación local
+   opcional descrita abajo puede consultar `main` y generar los paquetes tras
+   confirmación; no los instala ni integra el orquestador. El registro durable por
    despliegue de las versiones de aplicación, plantillas y herramientas
    requerido por RF-13 sigue pendiente de integración; declarar un commit
    no demuestra por sí solo la procedencia del paquete.
@@ -99,6 +100,57 @@ El orquestador todavía no lo ejecuta. Para integrarlo:
    identidad y estado de los servicios antes de marcar `ACTIVE`. Debe gestionar
    fallos, recuperación y un bloqueo compartido por tenant; no registrar targets
    como activos antes de completar la verificación.
+
+## Preparación local de paquetes desde GitHub
+
+Es una utilidad para una demostración local, **no autenticación ni
+autorización**. Está desactivada por defecto y no crea tenants ni recursos
+AWS. El backend debe escuchar únicamente en `127.0.0.1`; el panel local
+admitido usa el puerto 4200. No exponer esta función a redes o a usuarios no
+confiables. En Windows se requiere WSL con Git, Python 3 con `venv`, y Node.js
+y npm en WSL o accesibles desde Windows. Se necesita conexión a GitHub y a los
+registros de dependencias. Los repositorios de asistencia deben ser confiables:
+compilar puede ejecutar código de la versión elegida y sus dependencias.
+
+1. Solo si no existe, copiar `config/assistance-artifacts.example.json` a
+   `infrastructure/ansible/vars/private/artifact-sources.json` y editarlo
+   localmente. Indicar las URL HTTPS de GitHub para `backend` y `frontend`,
+   sin contraseñas ni tokens en las URL. La carpeta privada está ignorada por
+   Git. La utilidad usa la rama `main` de ambos repositorios.
+2. Para la demostración, agregar `ARTIFACT_PREPARATION_LOCAL=true` al
+   `apps/backend/.env` local y reiniciar la API. Mantener `HOST=127.0.0.1`.
+   Al terminar, desactivar la opción y detener el panel. El popup confirma una
+   operación, pero no identifica al operador.
+3. En el paso 3 de «Crear tenant», pulsar «Comprobar paquetes». Se consultan
+   las revisiones remotas y se verifica si ya hay una entrega íntegra para
+   ellas. Si no existe, se muestran los commits y se pide confirmación.
+   Si `main` cambió desde la confirmación, la operación falla y debe volver a
+   comprobarse. El estado se muestra en el panel y los fallos no crean un
+   resultado exitoso.
+4. El resultado queda en
+   `output/ansible-artifacts/releases/<identificador>/`: `source.tar.gz`,
+   `wheels.tar.gz`, `build.tar.gz` y `manifest.json` con revisiones,
+   checksums y herramientas. El backend de asistencia debe tener
+   `requirements.txt`; el frontend debe tener `package-lock.json` y producir
+   `dist/control-asistencia-web/browser/index.html`. El `npm ci` se ejecuta
+   solo dentro de la copia temporal del repositorio de asistencia, no cambia
+   el gestor del monorepo. Las dependencias Python se preparan en Linux/WSL.
+   El operador debe comprobar que la versión de Python, la arquitectura y las
+   bibliotecas del controlador sean compatibles con el backend de destino;
+   la generación local no verifica la imagen remota.
+5. Para Ansible, asignar esos tres archivos a `backend_source_archive`,
+   `backend_wheels_archive` y `frontend_build_archive`; usar las revisiones y
+   el checksum del frontend del manifiesto. El orquestador aún no hace esto
+   automáticamente. Verificar por separado la procedencia y el contenido de
+   los paquetes antes de usarlos o compartirlos.
+
+Los paquetes existentes se reutilizan solo tras comprobar sus checksums y
+revisiones. Los archivos dañados o incompletos generan un error y no se
+sobrescriben; los anteriores no se eliminan. Un bloqueo local impide
+preparaciones simultáneas; si el proceso se interrumpe puede quedar
+`output/ansible-artifacts/releases/.preparation.lock`, que un operador debe
+revisar antes de retirarlo manualmente. El progreso mostrado es local y no es
+un registro durable de trabajos ni de versiones por tenant.
 
 ## Comparación de aislamiento entre bases
 

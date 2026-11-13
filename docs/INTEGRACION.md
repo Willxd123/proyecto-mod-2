@@ -31,6 +31,13 @@ registro durable de trabajos.
 La respuesta también enumera las etapas previstas en orden, todas con estado
 `not_started`: es un plan informativo, no un worker ni una ejecución.
 
+La preparación de paquetes de asistencia es una utilidad optativa para
+demostración local, deshabilitada por defecto. Tras confirmación consulta
+`main` de dos repositorios configurados localmente y prepara o reutiliza
+artefactos versionados. No autentica al operador, no ejecuta Ansible ni
+aprovisiona recursos; no habilita la creación del tenant. Sus requisitos y
+límites se describen en `infrastructure/ansible/README.md`.
+
 La base del formulario de la plantilla ya está implementada y descarga un contrato `DeploymentRequest` marcado `deployable=false`. No persiste datos de contacto en el navegador ni agrega registros a `tenants`. La validación compartida está en `packages/contracts/src/validation.ts`; el integrante 2 debe aplicar también validación autoritativa en servidor al habilitar creación.
 
 Observabilidad del panel: `GET /api/metrics` expone formato Prometheus y `GET /api/monitoring/control-center` devuelve memoria, tiempo activo, CPU acumulada y contadores reales. Esto no es monitoreo de tenants. El stack inicial y los targets se describen en `infrastructure/observability/README.md`.

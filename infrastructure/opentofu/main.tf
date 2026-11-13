@@ -13,6 +13,9 @@ resource "terraform_data" "workspace_guard" {
   }
 }
 
+# OpenTofu no tiene código duplicado: llama exactamente al mismo módulo
+# de Terraform. Solo cambia el binario; el plan, las AMIs y la capacidad entran igual.
+
 module "tenant" {
   source = "../terraform/modules/tenant"
 

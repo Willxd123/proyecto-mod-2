@@ -28,14 +28,37 @@ class SecurityScanTests(unittest.TestCase):
         clean = security_scan.scan_handoff('i3-test', self.root)
         self.assertEqual(clean['status'], 'clean')
         self.assertIn('infrastructure/cloudformation/tenant.yaml', clean['scope'])
+        self.assertEqual([s['scanner'] for s in clean['scanners']], ['trivy', 'checkov', 'cfn-lint'])
+        self.assertTrue(all(not f.get('blocking') for f in clean['findings']))
         # Identificador sintético, sin clave ni cuenta asociada.
         secret = 'AKIA' + '4WZ5PTQ1VXM9K3LY'
         (self.directory / 'request.json').write_text(json.dumps({'tenant_slug': 'i3-test', 'engine': 'cloudformation', 'token': secret}), encoding='utf-8')
         found = security_scan.scan_handoff('i3-test', self.root)
         self.assertEqual(found['status'], 'blocked')
-        self.assertTrue(found['findings'])
+        self.assertTrue(any(f.get('blocking') and f.get('scanner') == 'trivy' for f in found['findings']))
         self.assertNotIn(secret, json.dumps(found))
         self.assertNotEqual(clean['content_sha256'], found['content_sha256'])
+
+    def test_postgres_5432_open_to_internet_blocks_deployment_as_critical(self):
+        if not shutil.which('trivy'):
+            self.skipTest('Trivy no está instalado.')
+        bad_cfn = (
+            b'Resources:\n'
+            b'  DatabaseSecurityGroup:\n'
+            b'    Type: AWS::EC2::SecurityGroup\n'
+            b'    Properties:\n'
+            b'      SecurityGroupIngress:\n'
+            b'        - {IpProtocol: tcp, FromPort: 5432, ToPort: 5432, CidrIp: 0.0.0.0/0}\n'
+        )
+        with patch.object(security_scan, 'infrastructure_snapshot',
+                          return_value={'infrastructure/cloudformation/tenant.yaml': bad_cfn}):
+            result = security_scan.scan_handoff('i3-test', self.root)
+        self.assertEqual(result['status'], 'blocked')
+        pg_findings = [f for f in result['findings'] if f['rule_id'] == 'IAC-PG-5432-PUBLIC']
+        self.assertEqual(len(pg_findings), 1)
+        self.assertEqual(pg_findings[0]['severity'], 'CRITICAL')
+        self.assertTrue(pg_findings[0]['blocking'])
+        self.assertEqual(pg_findings[0]['scanner'], 'checkov')
 
     def test_scans_template_as_part_of_snapshot(self):
         if not shutil.which('trivy'):

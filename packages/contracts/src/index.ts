@@ -54,13 +54,32 @@ export interface AssistanceArtifactJob {
   result: AssistanceArtifactInspection | null;
   error: string | null;
 }
+export type SecurityScannerId = 'trivy' | 'checkov' | 'cfn-lint';
+export type SecurityFindingSeverity = 'UNKNOWN' | 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+export interface SecurityScanFinding {
+  rule_id: string;
+  severity: SecurityFindingSeverity;
+  scanner?: SecurityScannerId;
+  category?: 'secret' | 'misconfig' | 'lint';
+  blocking?: boolean;
+  message?: string;
+}
+export interface SecurityScannerSummary {
+  scanner: SecurityScannerId;
+  label: string;
+  status: 'clean' | 'warning' | 'blocked';
+  blocking_count: number;
+  warning_count: number;
+  message: string;
+}
 export interface SecurityScanResult {
   schema_version: 1;
   tenant_slug: string;
   scanner: 'trivy';
+  scanners?: SecurityScannerSummary[];
   scope: string[];
   content_sha256: string;
   status: 'clean' | 'blocked';
-  findings: Array<{ rule_id: string; severity: 'UNKNOWN' | 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL' }>;
+  findings: SecurityScanFinding[];
 }
 export * from './validation';

@@ -42,6 +42,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     for field in ('tenant', 'name', 'email', 'plan', 'engine', 'key-name'): parser.add_argument('--' + field, required=True)
     parser.add_argument('--region', default='us-east-1'); parser.add_argument('--contract-only', action='store_true')
+    parser.add_argument('--request-id', default=None)
     parser.add_argument('--registry', type=Path, default=ROOT / 'config/golden-images.local.json')
     parser.add_argument('--output', type=Path)
     parser.add_argument('--ssh-public-key-file', type=Path, help='Archivo .pub; se inyecta en el user-data (nunca la llave privada).')
@@ -49,7 +50,7 @@ if __name__ == '__main__':
     try:
         keys = read_key_file(args.ssh_public_key_file) if args.ssh_public_key_file else []
         registry = json.loads(args.registry.read_text(encoding='utf-8')) if args.registry.exists() else {'images': []}
-        request = prepare(args.tenant, args.name, args.email, args.plan, args.region, args.engine, args.key_name, registry, args.contract_only)
+        request = prepare(args.tenant, args.name, args.email, args.plan, args.region, args.engine, args.key_name, registry, args.contract_only, request_id=args.request_id)
         directory = args.output or ROOT / 'output/handoff' / args.tenant
         # No sobrescribir una solicitud anterior: la copia del plan debe ser inmutable.
         directory.mkdir(parents=True, exist_ok=False)

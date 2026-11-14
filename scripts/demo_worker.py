@@ -262,6 +262,21 @@ def write_handoff(request):
     if HANDOFF.resolve().parent != (ROOT / 'output').resolve():
         raise DemoError('Directorio de handoff inválido.')
     directory = HANDOFF / slug
+    if directory.exists():
+        if directory.is_symlink() or not directory.is_dir():
+            raise DemoError('Directorio de handoff inválido.')
+        try:
+            existing = json.loads((directory / 'request.json').read_text(encoding='utf-8'))
+            for role in ROLES:
+                if (directory / f'{role}.yaml').read_text(encoding='utf-8').replace('\r\n', '\n') != render(slug, role):
+                    raise ValueError()
+        except (OSError, ValueError) as error:
+            raise DemoError('El handoff existente no es válido; no se sobrescribió.') from error
+        comparable_existing = {k: v for k, v in existing.items() if k != 'generated_at'}
+        comparable_new = {k: v for k, v in request.items() if k != 'generated_at'}
+        if comparable_existing != comparable_new:
+            raise DemoError('El handoff existente no coincide con la solicitud; no se sobrescribió.')
+        return directory
     directory.mkdir(mode=0o700, parents=True, exist_ok=False)
     (directory / 'request.json').write_text(json.dumps(request, indent=2) + '\n', encoding='utf-8')
     for role in ROLES:
@@ -372,8 +387,12 @@ def stage_ansible(slug, result, inventory, request, settings, release, manifest)
 def configure_and_verify(slug, request, result, staged):
     inventory, variables, vault, password_file = staged
     playbook = wsl_path(ROOT / 'infrastructure' / 'ansible' / 'configure-tenant.yml')
-    command = ['wsl.exe', '--cd', wsl_path(ROOT), '--exec', 'ansible-playbook', '-i', inventory, playbook,
-               '--vault-password-file', password_file, '-e', '@' + variables, '-e', '@' + vault]
+    command = [
+        'wsl.exe', '--cd', wsl_path(ROOT), '--exec', 'env',
+        'ANSIBLE_SSH_ARGS=-C -o ControlMaster=auto -o ControlPersist=60s -o StrictHostKeyChecking=accept-new',
+        'ansible-playbook', '-i', inventory, playbook,
+        '--vault-password-file', password_file, '-e', '@' + variables, '-e', '@' + vault,
+    ]
     run_silent(command, timeout=5400)
     verify = wsl(['--cd', wsl_path(ROOT), '--exec', 'python3', 'scripts/verify_demo_login.py', '--tenant', slug],
                  timeout=600)
@@ -414,9 +433,20 @@ def run(source):
         emit('prepare', 'Preparando contrato y snapshot del plan.')
         write_handoff(request)
         result_digest = security_scan.scan_handoff(slug)
+        for scanner_info in result_digest.get('scanners', []):
+            label = scanner_info.get('label', scanner_info.get('scanner', 'scanner'))
+            msg = scanner_info.get('message', '')
+            emit('scan', re.sub(r'[\x00-\x1f\x7f]+', ' ', f'{label}: {msg}').strip()[:230])
+        for warning in [f for f in result_digest.get('findings', []) if not f.get('blocking')][:6]:
+            warn_line = f"Advertencia [{warning.get('scanner', 'iac')} · {warning.get('severity')}] {warning.get('rule_id')}: {warning.get('message', '')}"
+            emit('scan', re.sub(r'[\x00-\x1f\x7f]+', ' ', warn_line).strip()[:230])
         if result_digest['status'] != 'clean':
-            raise DemoError('El escáner detectó hallazgos; no se ejecutará IaC.')
-        emit('scan', 'Escáner limpio; solicitud y plantillas verificadas.')
+            blocking_rules = ', '.join(
+                f"{f.get('rule_id')} ({f.get('severity')})"
+                for f in result_digest.get('findings', []) if f.get('blocking')
+            )[:140]
+            raise DemoError(f'Los escáneres bloquearon el despliegue por errores CRITICAL o secretos: {blocking_rules or "hallazgo crítico"}.')
+        emit('scan', 'Los 3 escáneres aprobaron el paquete sin errores CRITICAL; continuando aprovisionamiento.')
         preflight(request, settings)
         emit('preflight', 'Cuenta, región, AMIs, key pair y propiedad comprobados.')
         emit('provision', 'Aprovisionando infraestructura AWS; pueden aplicarse cargos.')
@@ -462,7 +492,11 @@ def main():
         outcome = run(source)
         print(json.dumps({'stage': 'result', 'status': 'succeeded', **outcome}), flush=True)
         return 0
-    except (DemoError, OSError, ValueError, KeyError, TypeError, json.JSONDecodeError):
+    except DemoError as error:
+        msg = re.sub(r'[\x00-\x1f\x7f]+', ' ', str(error)).strip()[:230]
+        emit('failed', msg or 'La operación falló. El tenant no se marcará ACTIVE; revise los artefactos locales y el estado AWS.', 'failed')
+        return 1
+    except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError):
         emit('failed', 'La operación falló. El tenant no se marcará ACTIVE; revise los artefactos locales y el estado AWS.', 'failed')
         return 1
 

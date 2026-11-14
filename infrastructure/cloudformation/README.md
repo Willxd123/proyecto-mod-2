@@ -15,17 +15,16 @@ bloqueo distribuido. Debe operar un único proceso autorizado por tenant. No
 cambiar de motor sobre recursos existentes. La comprobación de etiquetas no
 reemplaza autorización ni coordinación en la cuenta compartida.
 
-El escáner usa Trivy para secretos. Analiza los cuatro archivos del handoff y
-la plantilla CloudFormation; con Terraform/OpenTofu analiza sus archivos `.tf`,
-la plantilla de inventario y las plantillas cloud-init. No admite Pulumi. No analiza paquetes de la
-aplicación, estados ni archivos adicionales del operador; tampoco realiza un
-análisis de vulnerabilidades ni garantiza detectar todos los secretos. Cualquier
-hallazgo bloquea el motor CloudFormation. Un error del escáner también bloquea.
-Usa modo offline y desactiva telemetría y configuración de reglas local.
+El escaneo de seguridad previo al despliegue integra **tres escáneres** (`trivy`, `checkov` y `cfn-lint` / Trivy Config):
+1. **Trivy Secret Scanner (`trivy`)**: detecta secretos expuestos en los cuatro archivos del handoff y en la infraestructura del motor seleccionado.
+2. **Checkov IaC & Regla 5432 (`checkov`)**: ejecuta Checkov sobre las plantillas CloudFormation o módulos Terraform/OpenTofu y verifica explícitamente la regla crítica `IAC-PG-5432-PUBLIC` para impedir que el puerto `5432` de PostgreSQL quede abierto a `0.0.0.0/0` o `::/0`.
+3. **Trivy Config & cfn-lint (`cfn-lint`)**: analiza configuraciones IaC con Trivy (`--scanners misconfig`) y valida la plantilla CloudFormation con `cfn-lint`.
+
+Con CloudFormation analiza los cuatro archivos del handoff y `infrastructure/cloudformation/tenant.yaml`; con Terraform/OpenTofu analiza los cuatro archivos del handoff, los archivos `.tf`, la plantilla de inventario y las plantillas cloud-init. No admite Pulumi ni analiza paquetes de la aplicación, estados ni archivos adicionales del operador. Cualquier secreto expuesto o hallazgo `CRITICAL` (como abrir el puerto `5432` a Internet) bloquea el aprovisionamiento (`status = "blocked"`). Las observaciones IaC de severidad `HIGH`, `MEDIUM` o `LOW` se reportan como advertencias informativas (`blocking = false`) visibles en la consola y en `/seguridad` sin detener la creación del tenant. Un error de ejecución de cualquiera de los tres escáneres también bloquea. Usa modo offline y desactiva telemetría.
 
 ## Requisitos
 
-- Python 3.10+, AWS CLI v2 y Trivy disponibles en `PATH`.
+- Python 3.10+, AWS CLI v2, Trivy, Checkov y cfn-lint disponibles en `PATH`.
 - AMIs del proyecto en la misma cuenta y región, y key pair EC2 existente.
 - IP pública del operador en `/32` y cuenta AWS esperada explícita.
 - Ansible en Linux o WSL, con clave privada local de permisos `0600`.

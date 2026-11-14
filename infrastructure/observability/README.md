@@ -1,30 +1,158 @@
-# Base de observabilidad para el integrante 6
+# Módulo de Observabilidad — Integrante 6
 
-El panel ya entrega métricas reales de su proceso en `/api/metrics` y un resumen visible en Monitoreo. Esta base no sustituye RF-25 a RF-29: aún faltan los tableros y alertas por tenant, latencia y errores de la aplicación de asistencia, estado de PostgreSQL y recepción de alertas en la plataforma.
+Implementa RF-25 a RF-29. El servidor de observabilidad corre **Prometheus 2.54.1** y **Grafana 11.2.0** en una instancia EC2 dedicada. Los servidores de cada tenant ya tienen `node_exporter` preinstalado en el puerto **9100** (integrante 1); los de base de datos también tienen `postgres_exporter` instalado pero deshabilitado hasta que el integrante 4 configure el usuario de monitoreo.
 
-## Stack local
+---
 
-Docker Desktop debe estar iniciado. Completar `infrastructure/observability/.env` con una contraseña local de Grafana y ejecutar desde la raíz:
+## Arquitectura
 
-```powershell
-Copy-Item infrastructure/observability/.env.example infrastructure/observability/.env
-# Completar GRAFANA_ADMIN_PASSWORD.
-docker compose --env-file infrastructure/observability/.env -f infrastructure/observability/compose.yaml config --quiet
-docker compose --env-file infrastructure/observability/.env -f infrastructure/observability/compose.yaml up -d
+```
+┌─────────────────────────────────────────────────────────┐
+│  Instancia EC2  — observabilidad (t3.small)             │
+│                                                         │
+│  Prometheus :9090  ──scrape──►  node_exporter :9100     │
+│                                 (en cada servidor       │
+│  Grafana    :3000               de cada tenant)         │
+│                                                         │
+│  node_exporter :9100 (propio)   postgres_exporter :9187 │
+└──────────────────┬──────────────────────────────────────┘
+                   │ webhook POST /api/monitoring/alerts
+                   ▼
+        Backend NestJS (Control Center)
+        → persiste en tabla tenant_alerts
+        → el frontend Angular lo muestra en /monitoreo
 ```
 
-Grafana: `http://localhost:3002`, usuario `admin`. Prometheus: `http://localhost:9090`. La fuente y el tablero Control Center se provisionan desde archivos. Las reglas iniciales se evalúan en Prometheus; enviar alertas al panel y configurar notificaciones es tarea pendiente del integrante 6.
+---
 
-Prometheus consulta `host.docker.internal:3000`. Si Docker no alcanza una API enlazada a loopback, definir `HOST=0.0.0.0` en el `.env` local del backend, reiniciarla y limitar el acceso con el firewall del equipo. Mantener `127.0.0.1` cuando no se use Docker. Ajustar el target si se cambia el puerto. Los puertos publicados por Compose solo se exponen en loopback.
+## Estructura de archivos
 
-Detener con `docker compose --env-file infrastructure/observability/.env -f infrastructure/observability/compose.yaml down`. No agregar `--volumes` si se quiere conservar la información local.
+```
+infrastructure/observability/
+├── packer/
+│   ├── observability.pkr.hcl          # AMI de observabilidad
+│   ├── build.example.pkrvars.hcl      # Variables de ejemplo para Packer
+│   └── ansible/
+│       ├── observability.yml          # Playbook principal (Prometheus + Grafana)
+│       └── files/
+│           ├── prometheus/
+│           │   ├── prometheus.yml     # Configuración de scrape (usa file_sd)
+│           │   └── rules/
+│           │       └── tenant-alerts.yml  # Reglas de alerta
+│           ├── grafana/
+│           │   ├── provisioning/
+│           │   │   ├── datasources/prometheus.yml
+│           │   │   └── dashboards/provider.yml
+│           │   └── dashboards/
+│           │       ├── tenant-overview.json   # Dashboard por tenant (RF-25)
+│           │       └── control-center.json    # Dashboard del servidor obs.
+│           └── systemd/
+│               └── prometheus.service
+├── terraform/
+│   ├── main.tf         # Instancia EC2 + SG + EIP
+│   ├── variables.tf
+│   ├── outputs.tf
+│   └── terraform.example.tfvars
+└── scripts/
+    └── update_monitoring_targets.py   # Registrar/retirar tenants en Prometheus
+```
 
-## Integración con los tenants
+---
 
-Las imágenes Packer incluyen `prometheus-node-exporter`, habilitado en el puerto 9100. Las de base de datos incluyen además el paquete `prometheus-postgres-exporter`, deshabilitado hasta que Ansible configure el usuario de monitoreo y la conexión privada. Nunca abrir esos puertos a todo Internet.
+## Pasos de despliegue
 
-El integrante 5 registra y retira targets usando `scripts/update_monitoring_targets.py`; el integrante 6 establece la conectividad desde el recolector hacia los servidores. Prometheus en un portátil no alcanza automáticamente IPs privadas de VPC aisladas: se debe acordar una ubicación del recolector y rutas, reglas o túneles apropiados. El mismo usuario IAM no da conectividad de red.
+### 1 — Construir la AMI con Packer
 
-Los targets usan etiquetas `tenant`, `environment`, `role` y `scope=tenant`. Los indicadores del panel usan `scope=control-center`. No mezclar ambos alcances ni presentar métricas del panel como métricas de instituciones.
+```bash
+cd infrastructure/observability/packer
+cp build.example.pkrvars.hcl build.pkrvars.hcl
+# Editar build.pkrvars.hcl con los valores reales
+packer init .
+packer build -var-file=build.pkrvars.hcl .
+```
 
-Imágenes fijadas: Prometheus 3.16.0 y Grafana OSS 13.3.1. Validación pendiente contra Docker en este entorno por falta de acceso al motor. Referencias: [Prometheus](https://prometheus.io/docs/instrumenting/exposition_formats/), [provisioning Grafana](https://grafana.com/docs/grafana/latest/administration/provisioning/).
+### 2 — Desplegar la instancia con Terraform
+
+```bash
+cd infrastructure/observability/terraform
+cp terraform.example.tfvars terraform.tfvars
+# Editar terraform.tfvars con vpc_id y subnet_id reales
+terraform init
+terraform apply -var-file=terraform.tfvars
+```
+
+Terraform imprime la IP pública en `observabilidad_ip_publica`.
+
+### 3 — Configurar el backend
+
+Añadir en `apps/backend/.env`:
+
+```
+OBS_SERVER_IP=<IP del output de Terraform>
+GRAFANA_ADMIN_USER=admin
+GRAFANA_PORT=3000
+PROMETHEUS_PORT=9090
+WEBHOOK_TOKEN=<token secreto — compartir con la configuración de Alertmanager>
+```
+
+### 4 — Cambiar la contraseña de Grafana
+
+```bash
+ssh ubuntu@<IP>
+sudo grafana-cli admin reset-admin-password '<nueva-contraseña>'
+```
+
+---
+
+## Integración con tenants (Integrante 5)
+
+Al crear un tenant:
+
+```bash
+ssh ubuntu@<IP-obs>
+python3 /opt/scripts/update_monitoring_targets.py add \
+  --tenant <slug> --env produccion \
+  --node-ip <ip-frontend>,<ip-backend>,<ip-database> \
+  --db-ip <ip-database>
+# Prometheus recarga targets en ≤ 30 segundos (file_sd refresh_interval: 30s)
+```
+
+Al suspender o eliminar:
+
+```bash
+python3 /opt/scripts/update_monitoring_targets.py remove --tenant <slug>
+```
+
+---
+
+## Puertos y reglas de seguridad
+
+| Puerto | Servicio       | Acceso recomendado          |
+|--------|----------------|-----------------------------|
+| 3000   | Grafana        | Solo tu IP (SG de Terraform)|
+| 9090   | Prometheus     | Solo tu IP (SG de Terraform)|
+| 9100   | node_exporter  | Solo desde la IP del servidor de observabilidad (SG de los tenants) |
+| 9187   | postgres_exp.  | Solo desde la IP del servidor de observabilidad |
+| 22     | SSH            | Solo tu IP                  |
+
+> **Nunca abrir 9100 ni 9187 a 0.0.0.0/0.**
+
+---
+
+## Variables de entorno requeridas en el backend
+
+| Variable           | Descripción                                              |
+|--------------------|----------------------------------------------------------|
+| `OBS_SERVER_IP`    | IP pública del servidor de observabilidad               |
+| `GRAFANA_ADMIN_USER` | Usuario de Grafana (default: `admin`)                 |
+| `GRAFANA_PORT`     | Puerto de Grafana (default: `3000`)                     |
+| `PROMETHEUS_PORT`  | Puerto de Prometheus (default: `9090`)                  |
+| `WEBHOOK_TOKEN`    | Token secreto para el webhook de Alertmanager (RF-28)   |
+
+---
+
+## Limitaciones conocidas
+
+- Prometheus en la instancia EC2 no alcanza IPs privadas de VPC de otros tenants si están en subredes sin peering. Coordinar con el integrante 2/3 que las IPs de los servidores de tenants sean alcanzables desde la subred del servidor de observabilidad.
+- `postgres_exporter` requiere que el integrante 4 configure el usuario `monitoring` en PostgreSQL. Hasta entonces, los targets de postgres mostrarán `DOWN` y las alertas `TenantPostgresInaccesible` se dispararán; filtrar por severity si es necesario durante el desarrollo.
+- La contraseña de Grafana no se gestiona por Terraform para evitar que quede en el estado; cambiarla manualmente tras el primer arranque.

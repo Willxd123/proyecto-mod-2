@@ -1,0 +1,62 @@
+groups:
+  - name: tenant-disponibilidad
+    rules:
+      # Servidor de tenant sin métricas en los últimos 2 minutos
+      - alert: TenantServidorInaccesible
+        expr: up{scope="tenant"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Servidor {{ $labels.instance }} del tenant {{ $labels.tenant }} inaccesible"
+          description: "No se reciben métricas de {{ $labels.instance }} (tenant={{ $labels.tenant }}, role={{ $labels.role }}, environment={{ $labels.environment }}) desde hace más de 2 minutos."
+
+  - name: tenant-cpu
+    rules:
+      - alert: TenantCPUAlta
+        expr: >
+          100 - (avg by (instance, tenant, environment, role)
+            (rate(node_cpu_seconds_total{mode="idle", scope="tenant"}[5m])) * 100) > 85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "CPU alta en {{ $labels.instance }} (tenant={{ $labels.tenant }})"
+          description: "CPU por encima del 85 % durante 5 minutos en {{ $labels.instance }} (tenant={{ $labels.tenant }}, environment={{ $labels.environment }})."
+
+  - name: tenant-memoria
+    rules:
+      - alert: TenantMemoriaBaja
+        expr: >
+          (node_memory_MemAvailable_bytes{scope="tenant"} /
+           node_memory_MemTotal_bytes{scope="tenant"}) * 100 < 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Memoria disponible < 10 % en {{ $labels.instance }} (tenant={{ $labels.tenant }})"
+          description: "Solo queda {{ $value | humanizePercentage }} de memoria disponible en {{ $labels.instance }}."
+
+  - name: tenant-disco
+    rules:
+      - alert: TenantDiscoLleno
+        expr: >
+          (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay", scope="tenant"} /
+           node_filesystem_size_bytes{fstype!~"tmpfs|overlay", scope="tenant"}) * 100 < 15
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Disco < 15 % libre en {{ $labels.instance }} (tenant={{ $labels.tenant }})"
+          description: "Partición {{ $labels.mountpoint }} de {{ $labels.instance }} tiene menos del 15 % libre."
+
+  - name: tenant-postgres
+    rules:
+      - alert: TenantPostgresInaccesible
+        expr: pg_up{scope="tenant"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "PostgreSQL inaccesible en {{ $labels.instance }} (tenant={{ $labels.tenant }})"
+          description: "No se pueden obtener métricas de PostgreSQL en {{ $labels.instance }}."

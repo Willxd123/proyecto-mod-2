@@ -1,0 +1,25 @@
+[Unit]
+Description=Prometheus — servidor de métricas
+Documentation=https://prometheus.io/docs/
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=prometheus
+Group=prometheus
+ExecStart=/usr/local/bin/prometheus \
+  --config.file=/etc/prometheus/prometheus.yml \
+  --storage.tsdb.path=/var/lib/prometheus \
+  --storage.tsdb.retention.time=15d \
+  --web.console.libraries=/usr/local/bin/console_libraries \
+  --web.console.templates=/usr/local/bin/consoles \
+  --web.listen-address=0.0.0.0:9090 \
+  --web.enable-lifecycle
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=5s
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,150 @@
+{
+  "uid": "tenant-overview",
+  "title": "Tenant Overview — proyecto-modulo-2",
+  "description": "Disponibilidad, CPU, memoria, disco y PostgreSQL por tenant (RF-25 a RF-29)",
+  "tags": ["proyecto-modulo-2", "tenants"],
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-1h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "tenant",
+        "label": "Tenant",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "query": "label_values(up{scope=\"tenant\"}, tenant)",
+        "refresh": 2,
+        "multi": false,
+        "includeAll": true,
+        "allValue": ".*",
+        "current": {}
+      },
+      {
+        "name": "environment",
+        "label": "Entorno",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "query": "label_values(up{scope=\"tenant\", tenant=~\"$tenant\"}, environment)",
+        "refresh": 2,
+        "multi": false,
+        "includeAll": true,
+        "allValue": ".*",
+        "current": {}
+      },
+      {
+        "name": "role",
+        "label": "Rol",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "query": "label_values(up{scope=\"tenant\", tenant=~\"$tenant\"}, role)",
+        "refresh": 2,
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".*",
+        "current": {}
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Disponibilidad de servidores",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 24, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "CAÍDO", "color": "red" }, "1": { "text": "OK", "color": "green" } } }
+          ],
+          "thresholds": { "mode": "absolute", "steps": [{ "value": null, "color": "red" }, { "value": 1, "color": "green" }] }
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "up{scope=\"tenant\", tenant=~\"$tenant\", environment=~\"$environment\", role=~\"$role\"}",
+          "legendFormat": "{{ tenant }} / {{ role }} / {{ instance }}"
+        }
+      ],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "orientation": "auto", "colorMode": "background" }
+    },
+    {
+      "id": 2,
+      "title": "CPU (%) por servidor",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100 } },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "100 - (avg by (instance, tenant, role) (rate(node_cpu_seconds_total{mode=\"idle\", scope=\"tenant\", tenant=~\"$tenant\", environment=~\"$environment\", role=~\"$role\"}[5m])) * 100)",
+          "legendFormat": "{{ tenant }} / {{ role }} / {{ instance }}"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Memoria disponible (%)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100 } },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "(node_memory_MemAvailable_bytes{scope=\"tenant\", tenant=~\"$tenant\", environment=~\"$environment\", role=~\"$role\"} / node_memory_MemTotal_bytes{scope=\"tenant\", tenant=~\"$tenant\", environment=~\"$environment\", role=~\"$role\"}) * 100",
+          "legendFormat": "{{ tenant }} / {{ role }} / {{ instance }}"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Disco libre (%)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100 } },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "(node_filesystem_avail_bytes{fstype!~\"tmpfs|overlay\", mountpoint=\"/\", scope=\"tenant\", tenant=~\"$tenant\", environment=~\"$environment\", role=~\"$role\"} / node_filesystem_size_bytes{fstype!~\"tmpfs|overlay\", mountpoint=\"/\", scope=\"tenant\", tenant=~\"$tenant\", environment=~\"$environment\", role=~\"$role\"}) * 100",
+          "legendFormat": "{{ tenant }} / {{ role }} / {{ instance }}"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "PostgreSQL UP",
+      "type": "stat",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "CAÍDO", "color": "red" }, "1": { "text": "OK", "color": "green" } } }
+          ],
+          "thresholds": { "mode": "absolute", "steps": [{ "value": null, "color": "red" }, { "value": 1, "color": "green" }] }
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "pg_up{scope=\"tenant\", tenant=~\"$tenant\", environment=~\"$environment\"}",
+          "legendFormat": "{{ tenant }} / {{ instance }}"
+        }
+      ],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "orientation": "auto", "colorMode": "background" }
+    }
+  ]
+}

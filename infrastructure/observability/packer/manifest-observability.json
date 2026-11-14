@@ -1,0 +1,20 @@
+{
+  "builds": [
+    {
+      "name": "observability",
+      "builder_type": "amazon-ebs",
+      "build_time": 1794642055,
+      "files": null,
+      "artifact_id": "us-east-1:ami-02064232297f9ce2e",
+      "packer_run_uuid": "65644f9e-996b-9fce-fe15-b10f73e92cb4",
+      "custom_data": {
+        "grafana_version": "11.2.0",
+        "image_version": "1.0.0",
+        "prometheus_version": "2.54.1",
+        "role": "observabilidad",
+        "source_revision": "679158c"
+      }
+    }
+  ],
+  "last_run_uuid": "65644f9e-996b-9fce-fe15-b10f73e92cb4"
+}

@@ -1,0 +1,5 @@
+region        = "us-east-1"
+vpc_id        = "vpc-032b7812291802737"
+subnet_id     = "subnet-02129964e07f235bf"
+instance_type = "t3.small"
+my_ip         = "161.56.24.83/32"

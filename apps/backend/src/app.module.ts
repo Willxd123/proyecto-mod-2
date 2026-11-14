@@ -8,16 +8,17 @@ import { CatalogService } from './catalog/catalog.service';
 import { ImagesController } from './images/images.controller';
 import { ImagesService } from './images/images.service';
 import { TenantsController } from './tenants/tenants.controller';
+import { MonitoringModule } from './monitoring/monitoring.module';
 
 @Controller()
 class SystemController {
   constructor(private readonly database: DataSource) {}
   @Get('health') async health() { await this.database.query('SELECT 1'); return { status: 'ok', service: 'tenant-control-center', version: '0.1.0' }; }
-  @Get('capabilities') capabilities() { return { data: { catalog: true, image_registry: true, tenant_creation: false, security_scan: false, orchestration: false, monitoring: false } }; }
+  @Get('capabilities') capabilities() { return { data: { catalog: true, image_registry: true, tenant_creation: false, security_scan: false, orchestration: false, monitoring: true } }; }
 }
 
 @Module({
-  imports: [TypeOrmModule.forRoot(databaseOptions()), TypeOrmModule.forFeature([CatalogPlan, GoldenImageRecord, Tenant])],
+  imports: [TypeOrmModule.forRoot(databaseOptions()), TypeOrmModule.forFeature([CatalogPlan, GoldenImageRecord, Tenant]), MonitoringModule],
   controllers: [SystemController, CatalogController, ImagesController, TenantsController], providers: [CatalogService, ImagesService],
 })
 export class AppModule {}

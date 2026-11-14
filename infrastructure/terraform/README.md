@@ -73,6 +73,10 @@ aplicarlo para evitar cerrar 443 accidentalmente. La opción no configura TLS.
 
 Cada tenant tiene su **workspace**: `terraform workspace new <tenant_id>` (el script usa `workspace select -or-create`). Con el backend local, el estado de cada workspace queda en:
 
+Al iniciar los datos de trabajo de un tenant nuevo, el script prepara los metadatos
+del backend local en un directorio temporal aislado. No copia ni migra estados de
+otros workspaces; conserva los metadatos ya existentes de cada tenant.
+
 ```text
 infrastructure/terraform/terraform.tfstate.d/<tenant_id>/terraform.tfstate   # tenants creados con Terraform
 infrastructure/opentofu/terraform.tfstate.d/<tenant_id>/terraform.tfstate    # tenants creados con OpenTofu
@@ -98,6 +102,22 @@ python scripts/terraform_tenant.py destroy --tfvars output/tenants/colegio-demo/
 ```
 
 `apply` genera `inventories/<tenant_id>/hosts.ini` y `output/tenants/<tenant_id>/provisioning-result.json`. `--account-id` también puede venir de `AWS_EXPECTED_ACCOUNT_ID` y la ruta de la clave de `SSH_PRIVATE_KEY_PATH`. El script invoca el motor con listas de argumentos (sin shell) y transmite su salida tal cual.
+
+Para la integración web local, `plan` y `apply` admiten
+`--verify-handoff`: exige una solicitud `deployable=true` cuyo tenant, UUID,
+motor, región, AMIs, capacidades y key pair coincidan con el tfvars; verifica
+cloud-init y ejecuta Trivy. Vuelve a verificar la huella y el tfvars antes de
+invocar el motor, y rechaza variables y archivos tfvars implícitos. No cambia
+el comportamiento de los comandos existentes cuando no se usa la opción.
+El handoff debe tener el mismo `request_id` que el tfvars: el preparador
+manual genera un UUID nuevo, por lo que el futuro orquestador debe generar
+ambos artefactos desde la misma solicitud.
+
+Este control por sí solo **no habilita la creación web** ni garantiza que los
+archivos no cambien mientras Terraform los lee: no usa una copia inmutable de
+la configuración. Tampoco sustituye la comprobación de propiedad AWS,
+concurrencia, autorización, Ansible ni verificación de servicios. No utilizar
+esta opción como única medida para aplicar en una cuenta compartida.
 
 ## Pruebas
 

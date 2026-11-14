@@ -5,6 +5,8 @@ const fs = require('node:fs');
 const os = require('node:os');
 // Las pruebas se ejecutan desde la raíz con pnpm test, que compila primero.
 const backendRequire = require('node:module').createRequire(path.resolve('apps/backend/package.json'));
+const previousDemoProvisioning = process.env.DEMO_PROVISIONING_LOCAL;
+process.env.DEMO_PROVISIONING_LOCAL = 'false';
 backendRequire('reflect-metadata');
 const { NestFactory } = backendRequire('@nestjs/core');
 const { DataSource } = backendRequire('typeorm');
@@ -22,7 +24,11 @@ before(async () => {
   await app.listen(0, '127.0.0.1');
   base = await app.getUrl();
 });
-after(async () => { if (app) await app.close(); });
+after(async () => {
+  if (app) await app.close();
+  if (previousDemoProvisioning === undefined) delete process.env.DEMO_PROVISIONING_LOCAL;
+  else process.env.DEMO_PROVISIONING_LOCAL = previousDemoProvisioning;
+});
 
 test('catálogo PostgreSQL repetible y consistente con su fuente', async () => {
   const service = app.get(CatalogService);

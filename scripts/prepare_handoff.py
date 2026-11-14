@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parent.parent
 ROLES = ('frontend', 'backend', 'database')
 
 
-def prepare(tenant, name, email, plan_slug, region, engine, key_name, registry, contract_only=False):
+def prepare(tenant, name, email, plan_slug, region, engine, key_name, registry, contract_only=False, request_id=None):
     render(tenant, 'frontend')
     if not name.strip() or len(name) > 120: raise ValueError('Nombre de institución requerido, máximo 120 caracteres.')
     if not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+', email): raise ValueError('Correo de contacto inválido.')
@@ -29,7 +29,9 @@ def prepare(tenant, name, email, plan_slug, region, engine, key_name, registry, 
         selected[image['role']] = image
     ready = set(selected) == set(ROLES)
     if not ready and not contract_only: raise ValueError('Faltan imágenes reales de la región. Use --contract-only solo para preparar la integración.')
-    return dict(schema_version=1, request_id=str(uuid.uuid4()), tenant_slug=tenant, institution_name=name.strip(), admin_email=email,
+    request_id = str(request_id or uuid.uuid4())
+    if not re.fullmatch(r'[A-Za-z0-9-]{1,64}', request_id): raise ValueError('request_id inválido.')
+    return dict(schema_version=1, request_id=request_id, tenant_slug=tenant, institution_name=name.strip(), admin_email=email,
                 provider='aws', region=region, environment='produccion', engine=engine, key_pair_name=key_name,
                 deployable=ready and not contract_only, generated_at=datetime.now(timezone.utc).isoformat(),
                 plan_snapshot=dict(plan, catalog_version=catalog['catalog_version']),

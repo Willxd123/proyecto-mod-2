@@ -1,0 +1,208 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Tenant aislado con tres servidores de asistencia
+Parameters:
+  TenantSlug:
+    Type: String
+    AllowedPattern: '[a-z][a-z0-9-]{2,39}'
+  AvailabilityZone:
+    Type: AWS::EC2::AvailabilityZone::Name
+  KeyPairName:
+    Type: AWS::EC2::KeyPair::KeyName
+  SshCidr:
+    Type: String
+    AllowedPattern: '([0-9]{1,3}\.){3}[0-9]{1,3}/32'
+  FrontendAmi:
+    Type: AWS::EC2::Image::Id
+  BackendAmi:
+    Type: AWS::EC2::Image::Id
+  DatabaseAmi:
+    Type: AWS::EC2::Image::Id
+  FrontendType:
+    Type: String
+  BackendType:
+    Type: String
+  DatabaseType:
+    Type: String
+  FrontendDisk:
+    Type: Number
+    MinValue: 12
+  BackendDisk:
+    Type: Number
+    MinValue: 12
+  DatabaseDisk:
+    Type: Number
+    MinValue: 12
+  FrontendUserData:
+    Type: String
+  BackendUserData:
+    Type: String
+  DatabaseUserData:
+    Type: String
+  FrontendHttps:
+    Type: String
+    AllowedValues: ['true', 'false']
+    Default: 'false'
+  BackendPort:
+    Type: Number
+    Default: 8000
+    MinValue: 1
+    MaxValue: 65535
+Conditions:
+  EnableHttps: !Equals [!Ref FrontendHttps, 'true']
+Resources:
+  Vpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.42.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags: [{Key: Name, Value: !Sub '${TenantSlug}-vpc'}]
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags: [{Key: Name, Value: !Sub '${TenantSlug}-igw'}]
+  GatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref Vpc
+      InternetGatewayId: !Ref InternetGateway
+  PublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      AvailabilityZone: !Ref AvailabilityZone
+      CidrBlock: 10.42.1.0/24
+      MapPublicIpOnLaunch: false
+      Tags: [{Key: Name, Value: !Sub '${TenantSlug}-public'}]
+  PrivateSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      AvailabilityZone: !Ref AvailabilityZone
+      CidrBlock: 10.42.2.0/24
+      MapPublicIpOnLaunch: false
+      Tags: [{Key: Name, Value: !Sub '${TenantSlug}-private'}]
+  PublicRoutes:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+  PrivateRoutes:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: GatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRoutes
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+  PublicAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRoutes
+      SubnetId: !Ref PublicSubnet
+  PrivateAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRoutes
+      SubnetId: !Ref PrivateSubnet
+  FrontendSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Frontend y bastion del tenant
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - {IpProtocol: tcp, FromPort: 22, ToPort: 22, CidrIp: !Ref SshCidr}
+        - {IpProtocol: tcp, FromPort: 80, ToPort: 80, CidrIp: 0.0.0.0/0}
+      Tags: [{Key: Name, Value: !Sub '${TenantSlug}-frontend-sg'}]
+  HttpsIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Condition: EnableHttps
+    Properties:
+      GroupId: !Ref FrontendSecurityGroup
+      IpProtocol: tcp
+      FromPort: 443
+      ToPort: 443
+      CidrIp: 0.0.0.0/0
+  BackendSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Backend privado del tenant
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - {IpProtocol: tcp, FromPort: 22, ToPort: 22, SourceSecurityGroupId: !Ref FrontendSecurityGroup}
+        - {IpProtocol: tcp, FromPort: !Ref BackendPort, ToPort: !Ref BackendPort, SourceSecurityGroupId: !Ref FrontendSecurityGroup}
+      Tags: [{Key: Name, Value: !Sub '${TenantSlug}-backend-sg'}]
+  DatabaseSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: PostgreSQL privado del tenant
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - {IpProtocol: tcp, FromPort: 22, ToPort: 22, SourceSecurityGroupId: !Ref FrontendSecurityGroup}
+        - {IpProtocol: tcp, FromPort: 5432, ToPort: 5432, SourceSecurityGroupId: !Ref BackendSecurityGroup}
+      Tags: [{Key: Name, Value: !Sub '${TenantSlug}-database-sg'}]
+  Frontend:
+    Type: AWS::EC2::Instance
+    DependsOn: PublicRoute
+    Properties:
+      ImageId: !Ref FrontendAmi
+      InstanceType: !Ref FrontendType
+      KeyName: !Ref KeyPairName
+      PropagateTagsToVolumeOnCreation: true
+      NetworkInterfaces:
+        - DeviceIndex: '0'
+          AssociatePublicIpAddress: true
+          SubnetId: !Ref PublicSubnet
+          GroupSet: [!Ref FrontendSecurityGroup]
+      MetadataOptions: {HttpEndpoint: enabled, HttpTokens: required, HttpPutResponseHopLimit: 1}
+      BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs: {DeleteOnTermination: true, Encrypted: true, VolumeSize: !Ref FrontendDisk, VolumeType: gp3}
+      UserData: !Base64 {Ref: FrontendUserData}
+      Tags: [{Key: Name, Value: !Sub '${TenantSlug}-frontend'}, {Key: Role, Value: frontend}]
+  Backend:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref BackendAmi
+      InstanceType: !Ref BackendType
+      KeyName: !Ref KeyPairName
+      PropagateTagsToVolumeOnCreation: true
+      SubnetId: !Ref PrivateSubnet
+      SecurityGroupIds: [!Ref BackendSecurityGroup]
+      MetadataOptions: {HttpEndpoint: enabled, HttpTokens: required, HttpPutResponseHopLimit: 1}
+      BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs: {DeleteOnTermination: true, Encrypted: true, VolumeSize: !Ref BackendDisk, VolumeType: gp3}
+      UserData: !Base64 {Ref: BackendUserData}
+      Tags: [{Key: Name, Value: !Sub '${TenantSlug}-backend'}, {Key: Role, Value: backend}]
+  Database:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref DatabaseAmi
+      InstanceType: !Ref DatabaseType
+      KeyName: !Ref KeyPairName
+      PropagateTagsToVolumeOnCreation: true
+      SubnetId: !Ref PrivateSubnet
+      SecurityGroupIds: [!Ref DatabaseSecurityGroup]
+      MetadataOptions: {HttpEndpoint: enabled, HttpTokens: required, HttpPutResponseHopLimit: 1}
+      BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs: {DeleteOnTermination: true, Encrypted: true, VolumeSize: !Ref DatabaseDisk, VolumeType: gp3}
+      UserData: !Base64 {Ref: DatabaseUserData}
+      Tags: [{Key: Name, Value: !Sub '${TenantSlug}-database'}, {Key: Role, Value: database}]
+Outputs:
+  VpcId: {Value: !Ref Vpc}
+  PublicSubnetId: {Value: !Ref PublicSubnet}
+  PrivateSubnetId: {Value: !Ref PrivateSubnet}
+  FrontendSecurityGroupId: {Value: !Ref FrontendSecurityGroup}
+  BackendSecurityGroupId: {Value: !Ref BackendSecurityGroup}
+  DatabaseSecurityGroupId: {Value: !Ref DatabaseSecurityGroup}
+  FrontendId: {Value: !Ref Frontend}
+  BackendId: {Value: !Ref Backend}
+  DatabaseId: {Value: !Ref Database}
+  FrontendPrivateIp: {Value: !GetAtt Frontend.PrivateIp}
+  FrontendPublicIp: {Value: !GetAtt Frontend.PublicIp}
+  BackendPrivateIp: {Value: !GetAtt Backend.PrivateIp}
+  DatabasePrivateIp: {Value: !GetAtt Database.PrivateIp}

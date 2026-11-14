@@ -25,6 +25,14 @@ import { ApiService } from '../api.service';
 
       @if (loading()) { <div class="notice info" role="status">Consultando instituciones…</div> }
       @if (error()) { <div class="notice err" role="alert">{{ error() }}</div> }
+      @if (credentialError()) { <div class="notice err" role="alert">{{ credentialError() }}</div> }
+      @if (credentials(); as access) {
+        <div class="notice warn" role="status">Credenciales locales de demostración para <strong>{{ access.slug }}</strong>:
+          <div>Usuario: {{ access.email }}</div><div>Contraseña: {{ access.password }}</div>
+          <button type="button" class="btn sm" (click)="credentials.set(null)">Ocultar</button>
+          <p>Esta consulta no autentica al operador. No compartas la pantalla ni guardes la contraseña en logs.</p>
+        </div>
+      }
       @if (!loading() && !error() && !tenants().length) {
         <div class="card empty"><div class="empty-icon">▦</div><h2>Tu primera institución empieza aquí</h2><p>Aún no hay tenants registrados. Explora los planes mientras se integra el flujo de creación.</p><a class="btn primary" routerLink="/planes">Explorar planes →</a></div>
       }
@@ -39,7 +47,7 @@ import { ApiService } from '../api.service';
                 <td><strong>{{ tenant.plan_slug }}</strong></td>
                 <td><span class="tag">{{ tenant.engine }}</span><span class="sub">{{ tenant.region }}</span></td>
                 <td><span class="pill plain" [class.ok]="tenant.status === 'ACTIVE'" [class.warn]="tenant.status !== 'ACTIVE'">{{ tenant.status }}</span></td>
-                <td style="text-align:right;white-space:nowrap"><button class="btn sm" disabled title="Disponible con el orquestador (Integrante 5)">Actualizar nombre</button> <button class="btn sm" disabled title="Disponible con el orquestador (Integrante 5)">Suspender</button></td>
+                <td style="text-align:right;white-space:nowrap">@if (demoEnabled() && tenant.demo_credentials_available) { <button class="btn sm" (click)="reveal(tenant.slug)" [disabled]="credentialLoading()">Ver credenciales demo</button> } <button class="btn sm" disabled title="Disponible con el orquestador (Integrante 5)">Actualizar nombre</button> <button class="btn sm" disabled title="Disponible con el orquestador (Integrante 5)">Suspender</button></td>
               </tr>
             } @empty { <tr><td colspan="6">Ningún tenant coincide con el filtro.</td></tr> }
           </tbody>
@@ -49,13 +57,31 @@ import { ApiService } from '../api.service';
   `,
 })
 export class TenantsComponent {
+  private readonly api = inject(ApiService);
   readonly tenants = signal<TenantSummary[]>([]); readonly loading = signal(true); readonly error = signal('');
+  readonly demoEnabled = signal(false);
+  readonly credentialLoading = signal(false);
+  readonly credentialError = signal('');
+  readonly credentials = signal<{ slug: string; email: string; password: string } | null>(null);
   readonly query = signal(''); readonly status = signal('');
   readonly statuses = computed(() => [...new Set(this.tenants().map(tenant => tenant.status))]);
   readonly filtered = computed(() => {
     const query = this.query().trim().toLowerCase();
     return this.tenants().filter(tenant => (!query || tenant.name.toLowerCase().includes(query) || tenant.slug.includes(query)) && (!this.status() || tenant.status === this.status()));
   });
-  constructor() { inject(ApiService).tenants().subscribe({ next: r => { this.tenants.set(r.data); this.loading.set(false); }, error: () => { this.error.set('No se pudo consultar la lista de tenants.'); this.loading.set(false); } }); }
+  constructor() {
+    this.api.tenants().subscribe({ next: r => { this.tenants.set(r.data); this.loading.set(false); }, error: () => { this.error.set('No se pudo consultar la lista de tenants.'); this.loading.set(false); } });
+    this.api.demoCredentialsStatus().subscribe({ next: r => this.demoEnabled.set(r.data.enabled), error: () => this.credentialError.set('No se pudo consultar el estado de credenciales demo.') });
+  }
+  reveal(slug: string) {
+    this.credentials.set(null);
+    this.credentialError.set('');
+    if (!window.confirm(`Se mostrará la contraseña inicial de ${slug} en esta pantalla local. ¿Continuar?`)) return;
+    this.credentialLoading.set(true);
+    this.api.revealDemoCredentials(slug).subscribe({
+      next: r => { this.credentials.set({ slug, ...r.data }); this.credentialLoading.set(false); },
+      error: () => { this.credentialError.set('No se pudieron consultar las credenciales locales.'); this.credentialLoading.set(false); },
+    });
+  }
   val(event: Event) { return (event.target as HTMLInputElement | HTMLSelectElement).value; }
 }

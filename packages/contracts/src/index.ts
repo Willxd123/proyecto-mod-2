@@ -8,7 +8,7 @@ export interface ApiList<T> { data: T[]; meta?: Record<string, unknown>; }
 /** Estados de la tabla tenants (CHECK tenants_status_check). PENDING = borrador guardado desde el Paso 1. */
 export type TenantStatus = 'PENDING' | 'PROVISIONING' | 'ACTIVE' | 'SUSPENDED' | 'ERROR';
 export const TENANT_STATUSES: TenantStatus[] = ['PENDING', 'PROVISIONING', 'ACTIVE', 'SUSPENDED', 'ERROR'];
-export interface TenantSummary { slug: string; name: string; plan_slug: string; environment: string; region: string; engine: string; status: string; access_url: string | null; }
+export interface TenantSummary { slug: string; name: string; plan_slug: string; environment: string; region: string; engine: string; status: string; access_url: string | null; demo_credentials_available?: boolean; }
 export interface DeploymentMetadata { application_revision: string; infrastructure_revision: string; engine_version: string; ansible_version: string; images: GoldenImage[]; plan_snapshot: Plan; }
 export type IaCEngine = 'terraform' | 'opentofu' | 'pulumi' | 'cloudformation';
 export type OperationType = 'CREATE' | 'UPDATE' | 'SUSPEND' | 'RESUME' | 'DESTROY';
@@ -30,6 +30,13 @@ export interface OperationEvent {
   schema_version: 1; operation_id: string; tenant_slug: string; operation_type: OperationType;
   status: OperationStatus; stage: string; occurred_at: string; message: string;
 }
+export interface DemoProvisioningCapabilities {
+  enabled: boolean; ready: boolean; missing: string[]; supported_engines: Array<'terraform' | 'cloudformation'>;
+}
+export interface DemoProvisioningOperation {
+  operation_id: string; tenant_slug: string; status: OperationStatus; stage: string;
+  events: OperationEvent[]; result: ProvisioningResult | null; access_url: string | null; error: string | null;
+}
 export interface CreationReadiness {
   tenant_slug: string;
   tenant_status: string;
@@ -46,5 +53,14 @@ export interface AssistanceArtifactJob {
   status: 'idle' | 'running' | 'succeeded' | 'failed';
   result: AssistanceArtifactInspection | null;
   error: string | null;
+}
+export interface SecurityScanResult {
+  schema_version: 1;
+  tenant_slug: string;
+  scanner: 'trivy';
+  scope: string[];
+  content_sha256: string;
+  status: 'clean' | 'blocked';
+  findings: Array<{ rule_id: string; severity: 'UNKNOWN' | 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL' }>;
 }
 export * from './validation';

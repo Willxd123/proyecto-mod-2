@@ -1,8 +1,11 @@
 """Pruebas del ejecutor del motor principal (integrante 2). No invocan Terraform ni AWS."""
 import argparse
+import hashlib
 import json
+import os
 from pathlib import Path
 import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -11,6 +14,8 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / 'scripts'))
 import terraform_tenant as tt
+from render_cloud_init import render
+from security_scan import FILES, update_digest
 
 # Mismo formato que genera POST /api/tenants/:slug/tfvars.
 TFVARS = {
@@ -106,6 +111,122 @@ class TerraformTenantTests(unittest.TestCase):
             bad = self.write(engine='pulumi')
             self.assertEqual(tt.main(['plan', '--tfvars', str(bad), '--ssh-cidr', '8.8.8.8/32', '--account-id', '123456789012']), 2)
             run.assert_not_called()
+
+    def test_scanned_request_must_match_tfvars_and_be_deployable(self):
+        _, tfvars = tt.load_tfvars(self.write())
+        root = self.tmp / 'handoff'
+        directory = root / tfvars['tenant_id']
+        directory.mkdir(parents=True)
+        request = {
+            'schema_version': 1, 'provider': 'aws', 'deployable': True,
+            'tenant_slug': tfvars['tenant_id'], 'institution_name': tfvars['tenant_name'],
+            'region': tfvars['region'], 'engine': tfvars['engine'],
+            'request_id': tfvars['request_id'], 'key_pair_name': tfvars['key_pair_name'],
+            'user_data': {role: f'{role}.yaml' for role in tt.ROLES},
+            'plan_snapshot': {'slug': tfvars['plan_type'], 'roles': tfvars['plan_capacity']},
+            'images': {role: {'role': role, 'provider': 'aws', 'region': tfvars['region'],
+                              'ami_id': tfvars[f'{role}_ami_id']} for role in tt.ROLES},
+        }
+        def save():
+            (directory / 'request.json').write_text(json.dumps(request), encoding='utf-8')
+            for role in tt.ROLES:
+                (directory / f'{role}.yaml').write_text(render(tfvars['tenant_id'], role), encoding='utf-8', newline='\n')
+        save()
+        def scan(tenant, root):
+            digest = hashlib.sha256()
+            for name in FILES:
+                update_digest(digest, name, (directory / name).read_bytes())
+            for name, data in tt.infrastructure_snapshot(tfvars['engine']).items():
+                update_digest(digest, name, data)
+            return {'status': 'clean', 'content_sha256': digest.hexdigest()}
+        with patch.object(tt, 'scan_handoff', side_effect=scan):
+            self.assertEqual(len(tt.verify_handoff(tfvars, root)), 64)
+            with self.assertRaisesRegex(ValueError, 'ajenos'):
+                tt.verify_handoff(dict(tfvars, ssh_authorized_keys=['not-scanned']), root)
+            request['deployable'] = False
+            save()
+            with self.assertRaisesRegex(ValueError, 'no desplegable'):
+                tt.verify_handoff(tfvars, root)
+            request['deployable'] = True
+            request['images']['backend']['ami_id'] = 'ami-0ddddddddddddddd4'
+            save()
+            with self.assertRaisesRegex(ValueError, 'backend'):
+                tt.verify_handoff(tfvars, root)
+            request['images']['backend']['ami_id'] = tfvars['backend_ami_id']
+            save()
+            (directory / 'backend.yaml').write_text('unexpected\n', encoding='utf-8')
+            with self.assertRaisesRegex(ValueError, 'cloud-init'):
+                tt.verify_handoff(tfvars, root)
+        save()
+        with patch.object(tt, 'scan_handoff', return_value={'status': 'blocked', 'content_sha256': 'x' * 64}):
+            with self.assertRaisesRegex(ValueError, 'escaneo'):
+                tt.verify_handoff(tfvars, root)
+        if shutil.which('trivy'):
+            self.assertEqual(len(tt.verify_handoff(tfvars, root)), 64)
+
+    def test_scanner_errors_and_changed_content_block_the_guard(self):
+        _, tfvars = tt.load_tfvars(self.write())
+        with patch.object(tt, 'verify_handoff', side_effect=ValueError('escaneo bloqueado')), \
+                patch.object(tt.subprocess, 'run') as run:
+            self.assertEqual(tt.main(['apply', '--tfvars', str(self.tmp / 'terraform.tfvars.json'),
+                                      '--account-id', '123456789012', '--ssh-cidr', '8.8.8.8/32',
+                                      '--verify-handoff', '--yes']), 2)
+            run.assert_not_called()
+
+    def test_verified_mode_rejects_implicit_terraform_inputs(self):
+        tt.verify_implicit_inputs(self.tmp, {})
+        for env in ({'TF_VAR_ssh_authorized_keys': 'anything'}, {'TF_CLI_ARGS_apply': '-refresh=false'},
+                    {'TF_WORKSPACE': 'other'}):
+            with self.subTest(env=env), self.assertRaises(ValueError):
+                tt.verify_implicit_inputs(self.tmp, env)
+        (self.tmp / 'unexpected.auto.tfvars.json').write_text('{}', encoding='utf-8')
+        with self.assertRaises(ValueError):
+            tt.verify_implicit_inputs(self.tmp, {})
+
+    def test_change_after_initial_scan_never_runs_apply(self):
+        path = self.write()
+        engine_root = self.tmp / 'engine'
+        engine_root.mkdir()
+        location = {'root': engine_root, 'workspace': 'i2-fixture', 'state': self.tmp / 'state',
+                    'work': self.tmp / 'work', 'plugins': self.tmp / 'plugins', 'inventories': self.tmp / 'inventory'}
+        with patch.object(tt, 'verify_handoff', side_effect=['a' * 64, 'b' * 64]), \
+                patch.object(tt, 'paths', return_value=location), patch.object(tt, 'operator_tfvars', return_value={}), \
+                patch.object(tt, 'initialize_local_backend_metadata'), \
+                patch.object(tt, 'run') as run:
+            code = tt.main(['apply', '--tfvars', str(path), '--binary', 'terraform',
+                            '--account-id', '123456789012', '--ssh-cidr', '8.8.8.8/32',
+                            '--verify-handoff', '--yes'])
+            self.assertEqual(code, 2)
+            self.assertEqual([call.args[0][1] for call in run.call_args_list], ['init', 'workspace'])
+
+    @unittest.skipUnless(shutil.which('terraform'), 'Terraform no está disponible')
+    def test_new_backend_metadata_preserves_existing_workspace_state(self):
+        root = self.tmp / 'engine'
+        root.mkdir()
+        (root / 'main.tf').write_text('terraform {\n  backend "local" {}\n}\noutput "value" { value = "fixture" }\n',
+                                      encoding='utf-8')
+        existing_data = self.tmp / 'existing-data'
+        new_data = self.tmp / 'new-data'
+        new_data.mkdir()
+        env = {key: value for key, value in os.environ.items()
+               if not key.startswith(('TF_VAR_', 'TF_CLI_ARGS')) and key not in ('TF_WORKSPACE', 'TF_DATA_DIR')}
+        env.update(TF_DATA_DIR=str(existing_data), TF_IN_AUTOMATION='1')
+        binary = shutil.which('terraform')
+        for command in (['init', '-input=false'], ['workspace', 'new', 'other'], ['apply', '-input=false', '-auto-approve']):
+            subprocess.run([binary, *command], cwd=root, env=env, check=True, capture_output=True, text=True)
+        state = root / 'terraform.tfstate.d' / 'other' / 'terraform.tfstate'
+        original = state.read_bytes()
+        env['TF_DATA_DIR'] = str(new_data)
+        tt.initialize_local_backend_metadata(binary, {'work': new_data}, env)
+        subprocess.run([binary, 'init', '-input=false'], cwd=root, env=env, check=True, capture_output=True, text=True)
+        subprocess.run([binary, 'workspace', 'select', '-or-create=true', 'new-tenant'],
+                       cwd=root, env=env, check=True, capture_output=True, text=True)
+        subprocess.run([binary, 'workspace', 'select', 'other'], cwd=root, env=env, check=True, capture_output=True, text=True)
+        result = subprocess.run([binary, 'output', '-raw', 'value'], cwd=root, env=env,
+                                check=True, capture_output=True, text=True)
+        self.assertEqual(result.stdout.strip(), 'fixture')
+        self.assertEqual(state.read_bytes(), original)
+        self.assertTrue((root / 'terraform.tfstate.d' / 'new-tenant').exists())
 
 
 if __name__ == '__main__':

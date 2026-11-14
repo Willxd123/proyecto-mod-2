@@ -2,7 +2,7 @@ import { Component, computed, inject, OnDestroy, signal } from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { forkJoin } from 'rxjs';
 import { HttpErrorResponse } from '@angular/common/http';
-import { EMAIL_PATTERN, TENANT_SLUG_PATTERN, type CreationReadiness, type GoldenImage, type IaCEngine, type Plan, type TenantDraftCreated, type TenantValidationError } from '@modulo2/contracts';
+import { EMAIL_PATTERN, TENANT_SLUG_PATTERN, type CreationReadiness, type DemoProvisioningCapabilities, type DemoProvisioningOperation, type GoldenImage, type IaCEngine, type Plan, type TenantDraftCreated, type TenantValidationError } from '@modulo2/contracts';
 import { ApiService } from '../api.service';
 import { ROLES } from './plans.component';
 
@@ -85,7 +85,7 @@ const ENGINES: { id: IaCEngine; label: string }[] = [
                 <div class="ok-line">✔ Base de datos aislada por institución (RNF-Aislamiento)</div>
               </div>
               <div class="engine-select"><small>Motor de IaC</small>
-                <select aria-label="Motor de IaC" (change)="engine.set($any(val($event)))">@for (e of engines; track e.id) { <option [value]="e.id" [selected]="e.id === engine()">{{ e.label }}</option> }</select></div>
+                <select aria-label="Motor de IaC" (change)="engine.set($any(val($event)))">@for (e of engines; track e.id) { <option [value]="e.id" [selected]="e.id === engine()" [disabled]="!engineSupported(e.id)">{{ e.label }}</option> }</select></div>
             </div>
           }
 
@@ -106,43 +106,78 @@ const ENGINES: { id: IaCEngine; label: string }[] = [
             </div>
             <div class="card">
               <div class="card-head"><div><h2>Escáner de seguridad y secretos expuestos (pre-deploy)</h2><p>Verifica antes de aprovisionar que no existan credenciales ni llaves en los archivos de infraestructura.</p></div><span class="rf-badge">RF-11, RNF-Seguridad · Integrante 3</span></div>
-              <pre class="terminal" style="color:#94a3b8">[PENDIENTE] El escáner lo implementa el Integrante 3. Todavía no se ejecuta ningún análisis desde esta pantalla.</pre>
+              <div class="notice info">El escáner local analiza paquetes preparados desde la sección de seguridad.
+                La ejecución automática antes del despliegue depende de la integración del orquestador.
+                <a class="link" routerLink="/seguridad">Abrir escáner →</a></div>
             </div>
           }
 
           @if (step() === 3) {
             <div class="card">
-              <div class="card-head"><div><h2>Consola de aprovisionamiento en segundo plano</h2><p>Muestra el log real de la ejecución (escáner → motor IaC → cloud-init → Ansible → Grafana) cuando el orquestador esté integrado.</p></div>
-                <div style="display:flex;gap:8px;align-items:center"><span class="rf-badge">RF-10, RF-11, RF-13 · Int. 4 y 5</span><span class="pill neutral plain">No disponible</span></div></div>
+              <div class="card-head"><div><h2>Aprovisionamiento en segundo plano</h2><p>El flujo demo local conecta escáner → motor IaC → Ansible → verificación HTTPS del administrador.</p></div>
+                <div style="display:flex;gap:8px;align-items:center"><span class="rf-badge">RF-10, RF-11, RF-13 · Int. 4 y 5</span>
+                  @if (demoCapabilitiesError()) { <span class="pill warn plain">No verificado</span> }
+                  @else if (!demoCapabilities().enabled) { <span class="pill neutral plain">Demo deshabilitada</span> }
+                  @else if (demoCapabilities().ready) { <span class="pill ok plain">Listo para {{ demoCapabilities().supported_engines.join(', ') }}</span> }
+                  @else { <span class="pill warn plain">Falta configuración local</span> }
+                </div></div>
               <div class="grid cols-4" style="margin-bottom:16px">
                 <div class="mini"><small style="color:var(--faint)">Catálogo (RF-13)</small><br><b class="mono">v{{ selectedPlan()?.catalog_version ?? '—' }}</b></div>
                 <div class="mini"><small style="color:var(--faint)">Golden AMIs (RF-13)</small><br><b class="mono">{{ packerVersion() }}</b></div>
                 <div class="mini"><small style="color:var(--faint)">Motor IaC (RF-13)</small><br><b class="mono">{{ engine() }}</b></div>
-                <div class="mini"><small style="color:var(--faint)">Config. y monitoreo</small><br><b class="mono">Ansible + Grafana</b></div>
+                <div class="mini"><small style="color:var(--faint)">Configuración y verificación</small><br><b class="mono">Ansible + HTTPS</b></div>
               </div>
               <div class="console">
-                <div class="muted">Diagnóstico de solo lectura: no ejecuta escaneos, IaC, Ansible ni crea recursos.</div>
+                @if (demoCapabilitiesError()) {
+                  <div class="field-error" role="alert">{{ demoCapabilitiesError() }}</div>
+                } @else if (demoCapabilities().enabled) {
+                  <div class="notice warn">Modo local de demostración sin autenticación del operador. La confirmación puede crear recursos AWS con cargos. No se eliminan automáticamente si el flujo falla.</div>
+                  @if (!demoCapabilities().ready) {
+                    <div class="muted">Requisitos pendientes: {{ demoCapabilities().missing.join(', ') || 'no se pudo verificar la configuración local' }}.</div>
+                  }
+                  @if (demoOperation(); as operation) {
+                    @for (event of operation.events; track event.occurred_at) {
+                      <div>[{{ event.status }} · {{ event.stage }}] {{ event.message }}</div>
+                    }
+                    @if (operation.status === 'RUNNING') { <div role="status">Etapa actual: {{ operation.stage }}. No cierres el panel.</div> }
+                    @if (operation.error) { <div class="field-error" role="alert">{{ operation.error }}</div> }
+                    @if (operation.status === 'SUCCEEDED' && operation.access_url) {
+                      <div class="notice ok" role="status">Login inicial verificado. <a class="link" [href]="operation.access_url" target="_blank" rel="noopener">Abrir asistencia →</a></div>
+                      <div>Para consultar la contraseña inicial guardada en Vault, abre la lista de tenants.</div>
+                    }
+                    @if (operation.result) { <div class="muted">Infraestructura registrada para {{ operation.result.tenant_slug }} en {{ operation.result.region }}.</div> }
+                  } @else if (operationError()) { <div class="field-error" role="alert">{{ operationError() }}</div> }
+                } @else {
+                  <div class="muted">La función de aprovisionamiento demo está deshabilitada por defecto. El diagnóstico no ejecuta escaneos, IaC ni Ansible.</div>
+                }
                 @if (savedDraft(); as saved) {
                   <div class="cmd">Borrador consultado: {{ saved.tenant_slug }}</div>
-                  @if (readiness(); as result) {
-                    @for (check of result.checks; track check.code) {
-                      <div>[{{ check.status === 'ready' ? 'LISTO' : 'BLOQUEADO' }}] {{ check.message }}</div>
+                  @if (!demoCapabilities().enabled) {
+                    @if (readiness(); as result) {
+                      @for (check of result.checks; track check.code) {
+                        <div>[{{ check.status === 'ready' ? 'LISTO' : 'BLOQUEADO' }}] {{ check.message }}</div>
+                      }
+                      <div class="muted">Etapas previstas; ninguna se ha ejecutado:</div>
+                      @for (stage of result.pipeline; track stage.stage) {
+                        <div>[NO INICIADO] {{ stage.description }}</div>
+                      }
+                    } @else if (readinessLoading()) {
+                      <div>Consultando requisitos…</div>
+                    } @else {
+                      <div>No se pudo consultar el diagnóstico. Vuelve a intentarlo.</div>
                     }
-                    <div class="muted">Etapas previstas; ninguna se ha ejecutado:</div>
-                    @for (stage of result.pipeline; track stage.stage) {
-                      <div>[NO INICIADO] {{ stage.description }}</div>
-                    }
-                  } @else if (readinessLoading()) {
-                    <div>Consultando requisitos…</div>
-                  } @else {
-                    <div>No se pudo consultar el diagnóstico. Vuelve a intentarlo.</div>
                   }
                 } @else {
                   <div>Guarda primero el borrador para consultar sus requisitos.</div>
                 }
               </div>
               <div class="actions" style="margin-top:16px;border:0;padding:0">
-                <button class="btn primary" disabled title="Disponible cuando el orquestador esté integrado">Iniciar aprovisionamiento en 2.º plano</button>
+                @if (savedDraft(); as saved) {
+                  <button class="btn primary" (click)="startDemo()" [disabled]="!demoCapabilities().enabled || !demoCapabilities().ready || !engineSupported(engine()) || !!demoOperation() || operationStarting() || saved.status !== 'PENDING'">
+                    {{ demoOperation()?.status === 'RUNNING' ? 'Aprovisionando…' : 'Iniciar aprovisionamiento demo' }}
+                  </button>
+                }
+                @if (demoCapabilities().enabled) { <button class="btn" (click)="refreshDemoCapabilities()" [disabled]="demoCapabilitiesLoading()">Actualizar requisitos</button> }
                 @if (savedDraft(); as saved) { <button class="btn" (click)="loadReadiness(saved.tenant_slug)" [disabled]="readinessLoading()">Actualizar diagnóstico</button> }
                 <a class="link" routerLink="/tenants">Ver en lista de tenants (RF-14) →</a>
               </div>
@@ -171,7 +206,8 @@ const ENGINES: { id: IaCEngine; label: string }[] = [
           <div><h3>Entorno y región</h3>
             <div class="summary-line"><span>Producción</span><b>{{ region() }}</b></div>
             <div class="summary-line" style="margin-top:4px"><span>Motor de IaC (RF-08)</span><b style="color:var(--blue)">{{ engine() }}</b></div></div>
-          <div class="notice warn">La creación aún no está habilitada en el backend: este asistente valida los datos y muestra la configuración, pero no aprovisiona recursos.</div>
+          @if (!demoCapabilities().enabled) { <div class="notice warn">La creación web está deshabilitada por defecto. La activación local de demostración no autentica al operador.</div> }
+          @else { <div class="notice warn">La demostración usa la cuenta AWS configurada en este equipo y puede generar cargos.</div> }
         </aside>
       </div>
 
@@ -190,10 +226,14 @@ const ENGINES: { id: IaCEngine; label: string }[] = [
 export class CreateComponent implements OnDestroy {
   private readonly api = inject(ApiService);
   private artifactTimer: ReturnType<typeof setTimeout> | undefined;
+  private demoTimer: ReturnType<typeof setTimeout> | undefined;
   readonly artifactBusy = signal(false);
   readonly artifactMessage = signal('');
   readonly artifactError = signal('');
-  ngOnDestroy() { if (this.artifactTimer) clearTimeout(this.artifactTimer); }
+  ngOnDestroy() {
+    if (this.artifactTimer) clearTimeout(this.artifactTimer);
+    if (this.demoTimer) clearTimeout(this.demoTimer);
+  }
   private artifactFailure(error: HttpErrorResponse) {
     this.artifactBusy.set(false);
     this.artifactError.set(typeof error.error?.message === 'string' ? error.error.message : 'No se pudo completar la preparación local.');
@@ -246,6 +286,10 @@ export class CreateComponent implements OnDestroy {
     });
   }
   readonly roles = ROLES; readonly regions = REGIONS; readonly engines = ENGINES;
+  readonly demoCapabilities = signal<DemoProvisioningCapabilities>({ enabled: false, ready: false, missing: [], supported_engines: [] });
+  readonly demoCapabilitiesLoading = signal(false); readonly demoCapabilitiesError = signal('');
+  readonly demoOperation = signal<DemoProvisioningOperation | null>(null); readonly operationError = signal('');
+  readonly operationStarting = signal(false);
   readonly step = signal(1); readonly touched = signal(false);
   readonly name = signal(''); readonly slug = signal(''); readonly email = signal('');
   readonly region = signal('us-east-1'); readonly engine = signal<IaCEngine>('terraform'); readonly planSlug = signal('estandar');
@@ -270,6 +314,51 @@ export class CreateComponent implements OnDestroy {
     const requested = inject(ActivatedRoute).snapshot.queryParamMap.get('plan');
     if (requested) this.planSlug.set(requested);
     this.load();
+  }
+  engineSupported(engine: IaCEngine): boolean {
+    const capabilities = this.demoCapabilities();
+    return !capabilities.enabled || !capabilities.ready
+      || capabilities.supported_engines.includes(engine as 'terraform' | 'cloudformation');
+  }
+  refreshDemoCapabilities() {
+    this.demoCapabilitiesLoading.set(true); this.demoCapabilitiesError.set('');
+    this.api.demoProvisioningCapabilities().subscribe({
+      next: ({ data }) => {
+        this.demoCapabilities.set(data);
+        this.demoCapabilitiesLoading.set(false);
+        if (data.ready && !this.engineSupported(this.engine()) && !this.savedDraft()) {
+          this.engine.set(data.supported_engines[0]);
+        }
+      },
+      error: () => {
+        this.demoCapabilitiesLoading.set(false);
+        this.demoCapabilitiesError.set('No se pudieron comprobar los requisitos locales.');
+      },
+    });
+  }
+  startDemo() {
+    const draft = this.savedDraft();
+    if (!draft || !this.demoCapabilities().enabled || !this.demoCapabilities().ready) return;
+    if (!window.confirm(`Se iniciará ${this.engine()} para ${draft.tenant_slug} en AWS. Puede generar cargos y no habrá borrado automático si falla. La demostración local no autentica al operador. ¿Confirmas el aprovisionamiento?`)) return;
+    this.operationStarting.set(true); this.operationError.set('');
+    this.api.startDemoProvisioning(draft.tenant_slug).subscribe({
+      next: ({ data }) => {
+        this.demoOperation.set(data); this.operationStarting.set(false); this.pollDemoOperation(draft.tenant_slug);
+      },
+      error: (error: HttpErrorResponse) => {
+        this.operationStarting.set(false);
+        this.operationError.set(typeof error.error?.message === 'string' ? error.error.message : 'No se pudo iniciar el aprovisionamiento demo.');
+      },
+    });
+  }
+  private pollDemoOperation(slug: string) {
+    this.api.demoProvisioningOperation(slug).subscribe({
+      next: ({ data }) => {
+        this.demoOperation.set(data);
+        if (data.status === 'RUNNING') this.demoTimer = setTimeout(() => this.pollDemoOperation(slug), 2000);
+      },
+      error: () => { this.operationError.set('No se pudo consultar la operación local. Verifica AWS antes de intentar cualquier otra acción.'); },
+    });
   }
   val(event: Event) { return (event.target as HTMLInputElement | HTMLSelectElement).value; }
   imageFor(role: string) { return this.regionImages().find(image => image.role === role); }
@@ -330,7 +419,7 @@ export class CreateComponent implements OnDestroy {
     });
   }
   load() {
-    this.loading.set(true); this.error.set('');
+    this.loading.set(true); this.error.set(''); this.refreshDemoCapabilities();
     forkJoin({ plans: this.api.plans(), images: this.api.images() }).subscribe({
       next: ({ plans, images }) => { this.plans.set(plans.data); this.images.set(images.data); if (!plans.data.some(plan => plan.slug === this.planSlug())) this.planSlug.set(plans.data[0]?.slug ?? ''); this.loading.set(false); },
       error: () => { this.error.set('No se pudo cargar el catálogo o las imágenes. Verifica que la API y PostgreSQL estén disponibles.'); this.loading.set(false); },

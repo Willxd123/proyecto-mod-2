@@ -1,16 +1,21 @@
-import { Body, Controller, Get, HttpCode, Param, Post } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Optional, Param, Post } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Tenant } from '../database/entities';
 import { TenantsService } from './tenants.service';
+import { DemoProvisioningService } from '../demo-provisioning/demo-provisioning.service';
 
 @Controller('tenants')
 export class TenantsController {
-  constructor(@InjectRepository(Tenant) private readonly repository: Repository<Tenant>, private readonly tenants: TenantsService) {}
+  constructor(@InjectRepository(Tenant) private readonly repository: Repository<Tenant>, private readonly tenants: TenantsService,
+              @Optional() private readonly demoProvisioning?: DemoProvisioningService) {}
 
   @Get() async list() {
-    return { data: await this.repository.find({ select: ['slug', 'name', 'plan_slug', 'environment', 'region', 'engine', 'status', 'access_url'], order: { created_at: 'DESC' } }),
-      meta: { creation_enabled: false, owner: 'integrantes-2-y-5' } };
+    const tenants = await this.repository.find({ select: ['slug', 'name', 'plan_slug', 'environment', 'region', 'engine', 'status', 'access_url', 'deployment_metadata'], order: { created_at: 'DESC' } });
+    return { data: tenants.map(({ deployment_metadata, ...tenant }) => ({
+      ...tenant, demo_credentials_available: tenant.status === 'ACTIVE' && deployment_metadata.demo_initial_credentials_verified === true,
+    })),
+      meta: { creation_enabled: this.demoProvisioning?.enabled() ?? false, owner: 'integrantes-2-y-5' } };
   }
 
   /**

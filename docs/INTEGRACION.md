@@ -12,14 +12,29 @@ Los contratos de lectura entregados por integrante 1 usan JSON, rutas sin barra 
 | `GET /api/plans` | `{data: Plan[], meta: {provider: 'aws', quota_enforcement: false}}`. Orden Básico, Estándar, Avanzado. |
 | `GET /api/plans/:slug` | `{data: Plan}` o 404 de Nest. |
 | `GET /api/golden-images?region=us-east-1` | `{data: GoldenImage[], meta: {ready: {frontend, backend, database}}}`. Cada booleano indica existencia de registro para el rol, no prueba de salud ni verificación contra AWS. |
-| `GET /api/tenants` | Lista real de registros, inicialmente vacía. `meta.creation_enabled=false`. |
+| `GET /api/tenants` | Lista real de registros. `meta.creation_enabled` refleja el opt-in local de demostración; no implica que la configuración del host esté lista. |
 | `GET /api/capabilities` | Funciones implementadas y pendientes. |
 
-La API implementa validación, guardado de borradores y generación de tfvars,
-pero todavía no ejecuta creación ni operaciones de ciclo de vida, ni transmite
-logs. Nest responde 404 a las rutas de escritura ausentes. La API no recibe ni
-ejecuta comandos del navegador. Los errores de registro de AMIs no revelan
-rutas del sistema ni contenido de archivos.
+El panel conserva borradores por defecto. El opt-in `DEMO_PROVISIONING_LOCAL`
+agrega `GET /api/demo-provisioning/capabilities`,
+`POST /api/demo-provisioning/:slug/start` y
+`GET /api/demo-provisioning/operations/:slug`. Solo aceptan loopback, el origen
+del panel local y confirmación del slug; el cliente no envía comandos, rutas,
+variables cloud ni credenciales. El backend arma la solicitud desde PostgreSQL
+y limita el modo demo a Terraform y CloudFormation. El worker ejecuta Trivy,
+preflight AWS de solo lectura y, tras la confirmación de creación en la UI, el
+motor elegido, Ansible y verificación HTTPS/login antes de marcar `ACTIVE`.
+Un fallo pasa a `ERROR`; los resultados parciales verificados se conservan para
+reconciliación y no hay borrado automático.
+
+El opt-in no autentica al operador y puede crear recursos AWS con cargos; está
+desactivado por defecto. Progreso en memoria y estados finales en `tenants`
+evitan cambios de esquema, pero no constituyen una cola durable: tras un
+reinicio durante el trabajo el tenant queda en `PROVISIONING` para revisión
+manual y no se debe reintentar sin inspeccionar AWS. No se implementan aquí
+suspensión, reanudación, eliminación, targets de monitoreo ni ciclo de vida
+completo. Los eventos de progreso son mensajes estructurados; stdout/stderr
+arbitrarios de IaC y Ansible no se reenvían.
 
 El diagnóstico `GET /api/tenants/:slug/creation-readiness` consulta un tenant
 guardado y muestra requisitos listos o bloqueados. Es de solo lectura: no
@@ -29,7 +44,26 @@ autenticación, escáner, orquestación, controles de concurrencia y configuraci
 de Ansible integrados. No representa estado de ejecución ni sustituye un
 registro durable de trabajos.
 La respuesta también enumera las etapas previstas en orden, todas con estado
-`not_started`: es un plan informativo, no un worker ni una ejecución.
+`not_started`: es un diagnóstico del flujo general y no sustituye el estado
+del worker demo, consultable por la ruta de operaciones local.
+
+El escáner Trivy y el segundo motor CloudFormation pueden ejecutarse localmente
+según `infrastructure/cloudformation/README.md`. La pantalla de escaneo es
+optativa y requiere activación local; no autentica al operador ni integra el
+resultado con el flujo de producción. El worker demo vuelve a escanear el
+handoff y bloquea hallazgos antes de cualquiera de los motores.
+
+La consulta de credenciales de demostración está deshabilitada por defecto con
+`DEMO_PROVISIONING_LOCAL=false`. Cuando se habilita, solo acepta solicitudes
+desde loopback y el panel local; **no autentica al operador**. Solo muestra la
+contraseña inicial de un tenant `ACTIVE` cuyo despliegue haya registrado
+`demo_initial_credentials_verified=true` después de comprobar el inicio de
+sesión real. El worker demo crea el Vault y ejecuta Ansible antes de establecer
+esa marca. Nunca establecer la marca manualmente para una prueba o contraseña
+no verificadas.
+El cifrado no protege frente a quien pueda leer tanto el Vault como su clave
+en la misma cuenta local. No exponer esta función en redes o equipos no
+confiables.
 
 La preparación de paquetes de asistencia es una utilidad optativa para
 demostración local, deshabilitada por defecto. Tras confirmación consulta
@@ -72,8 +106,8 @@ Los integrantes pueden desarrollar con fixtures identificados antes de recibir r
 
 ## Próximos contratos por acordar
 
-La propuesta siguiente aún no es una API implementada: solicitud de creación con `slug`, `name`, `admin_email`, `plan_slug`, `region`, `environment` y `engine`; respuesta de operación con identificador, estado y resultado. Los integrantes 2 y 5 deben acordar validaciones, autenticación, acceso al estado y política de concurrencia antes de activar escrituras.
+La demo local ya permite guardar borradores y comenzar una operación de creación con confirmación. No es una API de producción: los integrantes 2 y 5 deben acordar autenticación, acceso al estado, recuperación y política de concurrencia compartida antes de habilitarla fuera de un equipo local confiable.
 
-Para evitar nombres divergentes, usar el contrato exportado `DeploymentRequest`: `tenant_slug` e `institution_name` son los nombres definitivos de intercambio para los campos de identificador e institución; los adaptadores mapean explícitamente a las columnas actuales `tenants.slug` y `tenants.name`. No existen todavía endpoints de creación. El detalle de hitos y guías está en `PLAN-INTEGRACION.md`.
+Para evitar nombres divergentes, usar el contrato exportado `DeploymentRequest`: `tenant_slug` e `institution_name` son los nombres definitivos de intercambio para los campos de identificador e institución; los adaptadores mapean explícitamente a las columnas actuales `tenants.slug` y `tenants.name`. Los endpoints de la demo se describen arriba; no sustituyen la orquestación definitiva. El detalle de hitos y guías está en `PLAN-INTEGRACION.md`.
 
 Para el ciclo de vida, acordar la máquina de estados (por ejemplo PENDING, PROVISIONING, ACTIVE, SUSPENDING, SUSPENDED, RESUMING, DELETING, DELETED, FAILED), los errores y la conservación de metadatos. No mezclar estados visuales de una simulación con estados reales en AWS.

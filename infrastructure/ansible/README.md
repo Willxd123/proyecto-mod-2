@@ -2,10 +2,13 @@
 
 ## Avance del integrante 4
 
-Estado al 13 de noviembre de 2026: **parcialmente verificado en AWS**. El
+Estado histórico al 13 de noviembre de 2026: **parcialmente verificado en AWS**. El
 tenant `i4-gary-prueba` es infraestructura real creada con Terraform y se usa
 únicamente para pruebas; los módulos, estudiantes y asistencias cargados son
-datos sintéticos. No se ha demostrado aislamiento entre dos tenants.
+datos sintéticos. Posteriormente se verificaron aislamiento y persistencia en
+dos tenants Terraform, y un flujo web CloudFormation llegó a `ACTIVE` con
+login HTTPS verificado. La lista siguiente conserva evidencia de la primera
+prueba y sus limitaciones en esa fecha.
 
 ### Implementado y comprobado
 
@@ -19,8 +22,8 @@ datos sintéticos. No se ha demostrado aislamiento entre dos tenants.
 | Recuperación y métricas | Tras reiniciar por separado las tres instancias se recuperaron los servicios, `pg_up 1` y los datos sintéticos. El exporter escucha solo en loopback: no se ha probado recolección remota. |
 
 El módulo sintético de la prueba visual quedó activo y el anterior inactivo;
-ambos permanecen para revisión. El panel de tenants no crea ni configura el
-tenant automáticamente. La aplicación de asistencia es independiente del
+ambos permanecen para revisión. La demo local del panel puede crear y configurar el tenant automáticamente,
+pero no autentica al operador. La aplicación de asistencia es independiente del
 panel y usa Django y Angular; no se requiere reescribirla en NestJS.
 El 13 de noviembre de 2026 se detuvieron las tres instancias del tenant de
 prueba para reducir costos; los volúmenes y otros recursos pueden seguir
@@ -30,8 +33,8 @@ generando cargos. No se ha verificado su reanudación ni una IP pública nueva.
 
 | Pendiente | Necesidad o responsable de coordinación |
 | --- | --- |
-| Ejecutar el verificador de aislamiento del Entregable 7 y probar acceso cruzado | El verificador de conteos está preparado y probado localmente con datos sintéticos, pero no se ha ejecutado contra dos tenants AWS. El último intento de segundo tenant encontró `VpcLimitExceeded`; acordar cuota o alternativa con el administrador AWS. |
-| Validar inventarios de ambos motores | El inventario Terraform del integrante 2 ya se usó; falta probar el inventario real del segundo motor con el integrante 3. |
+| Mantener evidencia de aislamiento del Entregable 7 | Se probaron dos tenants Terraform en AWS, incluidos marcadores separados, acceso cruzado y persistencia tras reinicio. Repetir con los tenants de defensa y conservar evidencia sanitizada. |
+| Validar inventarios de ambos motores | La demo de CloudFormation completó Ansible y login HTTPS; repetir con las versiones de la entrega y los planes elegidos. |
 | Integrar la creación desde el panel y comprobar suspensión/reanudación | Integrante 5: invocar Ansible con inventario, variables y secretos autorizados, comprobar servicios, persistencia y posible cambio de IP/certificado. Reiniciar EC2 no equivale a stop/start. |
 | Verificar métricas remotas | Integrante 6: acordar ubicación, transporte privado y reglas restringidas del recolector; comprobar targets y `pg_up`. |
 | Acordar interpretación de la guía | El correo `admin_email` crea al administrador, pero no existe la variable literal `TENANT_ADMIN_EMAIL`. La guía menciona un límite de estudiantes y el catálogo actual lo declara informativo: acordar el alcance sin afirmar que se aplica una cuota. |
@@ -51,20 +54,96 @@ preparar o publicar cambios.
 
 ## Entrega al integrante 5
 
-El punto de entrada es `configure-tenant.yml` y el comando completo aparece
-en la sección [Despliegue completo preparado](#despliegue-completo-preparado).
-El orquestador todavía no lo ejecuta. Para integrarlo:
+### Orquestación demo local
 
-1. Consumir una solicitud autorizada `DeploymentRequest` con `deployable=true`
-   y un `ProvisioningResult` del mismo tenant, request, región y motor. Verificar
-   cuenta AWS, etiquetas, propiedad y direcciones antes de cualquier cambio;
-   el playbook no realiza por sí solo esa verificación AWS.
+`scripts/demo_worker.py` ofrece el flujo de demostración local: solicitud
+guardada → escaneo Trivy → preflight → Terraform o CloudFormation → Ansible
+completo → comprobación HTTPS, login inicial, endpoint de administración y
+cierre de sesión. El backend expone capacidades, inicio confirmado y polling
+desde loopback. `PENDING` pasa a `PROVISIONING`; solo el verificador exitoso
+permite guardar `ACTIVE` y el URL de asistencia. Si falla, el tenant queda
+`ERROR` y se conserva el `ProvisioningResult` cuando pudo validarse. No se
+eliminan recursos automáticamente. Los logs arbitrarios del motor/Ansible no
+se envían al navegador.
+
+Para verificar la persistencia contra el PostgreSQL configurado, ejecuta
+`$env:DEMO_POSTGRES_TEST='1'; node --test --test-name-pattern='PostgreSQL guarda' tests/artifacts.test.cjs`
+desde la raíz, después de compilar el backend. La prueba usa una tabla temporal
+de su propia conexión y no modifica los tenants existentes.
+
+El flujo es estrictamente opt-in mediante `DEMO_PROVISIONING_LOCAL=true` en
+`apps/backend/.env`, requiere `HOST=127.0.0.1` y no autentica al operador.
+Puede crear recursos AWS y generar cargos; mantenerlo apagado fuera de una
+sesión local confiable. La UI solicita confirmación y solo permite los motores
+que el worker detectó. Antes de empezar, configura en el `.env` local
+`AWS_EXPECTED_ACCOUNT_ID`, `DEMO_SSH_CIDR`, `DEMO_SSH_PRIVATE_KEY_WSL_PATH`,
+`SSH_KEY_PAIR_NAME`, `DEMO_CERTBOT_EMAIL`,
+`DEMO_POSTGRESQL_PSYCOPG_DEB` y `DEMO_ARTIFACT_RELEASE`. El último valor se
+obtiene desde «Comprobar paquetes» en el paso 3. La clave SSH, el paquete `.deb`,
+el inventario, las variables privadas, estados IaC y Vault deben permanecer
+fuera de Git. El worker comprueba la cuenta y región antes de crear recursos.
+
+Preparación mínima de equipo:
+
+1. Deja `DEMO_PROVISIONING_LOCAL=false` mientras preparas y verificas el host.
+   Usa AWS CLI y el perfil IAM ya autorizado por el equipo; confirma la cuenta
+   esperada con `aws sts get-caller-identity`.
+2. Prepara los paquetes backend/frontend desde la sección
+   [Preparación local de paquetes desde GitHub](#preparación-local-de-paquetes-desde-github)
+   y copia el identificador de release mostrado por el panel a
+   `DEMO_ARTIFACT_RELEASE`.
+3. Proporciona un paquete local `python3-psycopg2` compatible con Ubuntu 24.04
+   accesible desde WSL y configura su ruta absoluta en
+   `DEMO_POSTGRESQL_PSYCOPG_DEB`. No se descarga automáticamente ni se incluye
+   un `.deb` en el repositorio.
+4. Configura la ruta WSL de la clave SSH autorizada, el key pair de la región,
+   la IP pública del operador como `/32`, la cuenta esperada y el correo de
+   Certbot. Protege la clave fuera del repo; comprueba solo sus permisos, nunca
+   imprimas su contenido.
+5. Activa `DEMO_PROVISIONING_LOCAL=true`, mantén `HOST=127.0.0.1`, reinicia el
+   backend y consulta los requisitos en el paso 3. Confirma la operación web
+   solo cuando aceptes los cargos potenciales. Al terminar, vuelve a
+   `false`.
+
+`scripts/demo_vault.py` genera secretos por tenant con Ansible Vault en el
+directorio privado del usuario de Linux/WSL, fuera del repositorio. La clave
+de Vault y el archivo cifrado se guardan en subdirectorios separados, con
+permisos restringidos al usuario; no se sobrescriben. La contraseña inicial
+del administrador se puede recuperar desde el panel únicamente si
+`DEMO_PROVISIONING_LOCAL=true`, el tenant está `ACTIVE` y el worker demo ha
+comprobado el inicio de sesión y registrado
+`demo_initial_credentials_verified=true`. La respuesta lleva `no-store` y la
+pantalla solicita confirmación, pero cualquier proceso con acceso a la misma
+cuenta local puede suplantar al panel: **no es autenticación**. La clave y el
+Vault residen en el mismo equipo, por lo que su cifrado no protege si ambos
+son accesibles. Nunca usar este modo para producción.
+
+La acción `reveal` del script escribe la contraseña en su salida estándar y
+está destinada al proceso local del backend; no dirigirla a terminales, logs
+o archivos. Las pruebas utilizan secretos generados solo para fixtures:
+
+```powershell
+wsl --exec python3 -m unittest discover -s tests -p test_demo_vault.py -v
+```
+
+El punto de entrada ejecutado por el worker es `configure-tenant.yml`. Para
+entender los contratos consumidos:
+
+1. El worker construye el `DeploymentRequest` desde el borrador `PENDING` y
+   exige `deployable=true`; valida que el `ProvisioningResult` corresponda al
+   mismo tenant, request, región y motor. La demo local no autentica al
+   operador. El preflight verifica cuenta, región, AMIs, key pair, que la
+   clave pública derivada localmente corresponda al key pair AWS y ausencia
+   de recursos etiquetados con ese tenant. La comparación no imprime la clave
+   ni el contenido de la privada; requiere una clave sin passphrase. El
+   playbook no realiza esas comprobaciones AWS por sí solo.
 2. Recibir del motor un inventario privado con un host por grupo `frontend`,
    `backend` y `database`, `tenant_slug` idéntico, acceso SSH al frontend y
    acceso privado al backend y la base mediante el bastión. El inventario debe
    aportar las IPs y `backend_port`; el ejemplo generado por Terraform está en
-   `../terraform/modules/tenant/templates/inventory.tftpl`. Aún no se ha
-   probado un inventario del motor del integrante 3.
+   `../terraform/modules/tenant/templates/inventory.tftpl`. El inventario real
+   CloudFormation pasó preflight, configuración completa y login HTTPS en una
+   demo web posterior. Ver [evidencia CloudFormation](../cloudformation/README.md).
 3. Preparar fuera de Git las variables públicas con
    [`tenant-vars.example.yml`](tenant-vars.example.yml): `institution_name`
    proviene de la solicitud, `tenant_plan_name` de `plan_snapshot.name` y
@@ -84,22 +163,21 @@ El orquestador todavía no lo ejecuta. Para integrarlo:
    [`940a98b8`](https://github.com/GBAC22/control-asistencia-frontend/pull/1).
    Revisar el estado de los pull requests antes de integrar sus cambios.
    Para cada versión aprobada, generar los paquetes desde revisiones concretas
-   de los repositorios y entregar sus identificadores, las rutas de los
-   paquetes y el checksum del frontend al orquestador. La preparación local
-   opcional descrita abajo puede consultar `main` y generar los paquetes tras
-   confirmación; no los instala ni integra el orquestador. El registro durable por
+   de los repositorios y comprobar su procedencia y compatibilidad. La
+   preparación local opcional descrita abajo puede consultar `main` y generar
+   los paquetes tras confirmación; el worker consume el release elegido desde
+   el `.env`. El registro durable por
    despliegue de las versiones de aplicación, plantillas y herramientas
    requerido por RF-13 sigue pendiente de integración; declarar un commit
    no demuestra por sí solo la procedencia del paquete.
 5. Custodiar fuera del repo el archivo Vault y su contraseña, la clave SSH y
    los secretos específicos de cada tenant. No pasar contraseñas en argumentos,
    eventos, user-data o logs. Proteger los archivos de variables e inventarios.
-6. Invocar Ansible con argumentos separados, sin construir comandos con datos
-   del navegador, y conservar su código de salida. Cero indica que terminaron
-   las comprobaciones del playbook, pero el orquestador debe comprobar HTTPS,
-   identidad y estado de los servicios antes de marcar `ACTIVE`. Debe gestionar
-   fallos, recuperación y un bloqueo compartido por tenant; no registrar targets
-   como activos antes de completar la verificación.
+6. El worker invoca Ansible con argumentos separados y conserva su código de
+   salida. Después verifica por HTTPS el health, CSRF, login, acceso al módulo
+   administrativo y logout; solo entonces marca `ACTIVE`. La cola y el progreso
+   no son durables. Si la API se reinicia durante un job, revisar cuenta,
+   recursos y estado local antes de cualquier reintento; no se hace cleanup.
 
 ## Preparación local de paquetes desde GitHub
 
@@ -138,11 +216,10 @@ compilar puede ejecutar código de la versión elegida y sus dependencias.
    El operador debe comprobar que la versión de Python, la arquitectura y las
    bibliotecas del controlador sean compatibles con el backend de destino;
    la generación local no verifica la imagen remota.
-5. Para Ansible, asignar esos tres archivos a `backend_source_archive`,
-   `backend_wheels_archive` y `frontend_build_archive`; usar las revisiones y
-   el checksum del frontend del manifiesto. El orquestador aún no hace esto
-   automáticamente. Verificar por separado la procedencia y el contenido de
-   los paquetes antes de usarlos o compartirlos.
+5. El worker toma del release `backend_source_archive`, `backend_wheels_archive`
+   y `frontend_build_archive`, y valida los checksums antes de ejecutar Ansible.
+   Verificar por separado la procedencia y el contenido de los paquetes antes
+   de usarlos o compartirlos.
 
 Los paquetes existentes se reutilizan solo tras comprobar sus checksums y
 revisiones. Los archivos dañados o incompletos generan un error y no se

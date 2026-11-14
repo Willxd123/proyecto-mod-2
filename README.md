@@ -10,9 +10,9 @@ Monorepo académico del panel administrador de tenants de la plataforma multi-te
 | --- | --- | --- |
 | M0 — Base compartida (monorepo, catálogo, contratos, panel) | Integrante 1 | Completo |
 | M1 — Golden Images y primer arranque | Integrante 1 | **Completo**: 3 AMIs construidas en `us-east-1` y verificadas con smoke test (evidencia en `docs/image.png`) |
-| M2 — Dos motores IaC compatibles | Integrantes 2 y 3 | Pendiente |
-| M3 — Aplicación de asistencia por institución | Integrante 4 | **Parcial**: configuración y asistencia verificadas en un tenant de prueba AWS; falta aislamiento entre dos tenants e integración. Ver [avance y dependencias](infrastructure/ansible/README.md#avance-del-integrante-4). |
-| M4 — Orquestación y ciclo de vida | Integrante 5 | Pendiente |
+| M2 — Dos motores IaC compatibles | Integrantes 2 y 3 | **Parcial**: Terraform y CloudFormation crean infraestructura real; el flujo web con CloudFormation terminó correctamente. Una prueba web reciente con Terraform permaneció en configuración; investigar antes de reintentar. |
+| M3 — Aplicación de asistencia por institución | Integrante 4 | **Parcial**: Ansible, asistencia, aislamiento y persistencia se probaron en dos tenants Terraform. Falta validar suspensión/reanudación y monitoreo remoto; ver [guía de Ansible](infrastructure/ansible/README.md). |
+| M4 — Orquestación y ciclo de vida | Integrante 5 | **Parcial**: demo local opt-in con escaneo, dos motores, Ansible y login. Falta autenticación, recuperación durable y operaciones de ciclo de vida. |
 | M5 — Observabilidad por tenant | Integrante 6 | Pendiente |
 
 Qué funciona hoy en el panel y qué no:
@@ -21,13 +21,23 @@ Qué funciona hoy en el panel y qué no:
 | --- | --- |
 | Catálogo de planes (RF-01, RF-02) | API desde PostgreSQL (`catalog_plans`), con columnas de capacidad y `backup_policy`. Pantalla *Planes y Golden AMIs*. |
 | Golden Images (RF-09, RF-13) | Registro validado en `config/golden-images.json`, reflejado en la tabla `golden_images` y expuesto en `/api/golden-images`. |
-| Crear tenant | Asistente de tres pasos con validación; usa planes y AMIs reales. **No aprovisiona**: la creación está deshabilitada en el backend hasta que existan el orquestador y los motores. |
-| Lista de tenants | Consulta real (vacía por ahora), con filtros. Las acciones de ciclo de vida son del integrante 5. |
-| Escáner y monitoreo | Espacios reservados; no muestran datos simulados. Integrantes 3 y 6. |
+| Crear tenant | Asistente con borradores. El modo opcional `DEMO_PROVISIONING_LOCAL=true` habilita Terraform/CloudFormation → Ansible → login HTTPS desde este equipo; crea recursos AWS reales y puede generar cargos. Está desactivado por defecto y no autentica al operador. |
+| Lista de tenants | Consulta los registros de PostgreSQL, con filtros y consulta de credenciales demo verificadas. Las acciones de ciclo de vida son del integrante 5. |
+| Escáner y monitoreo | El worker demo ejecuta Trivy antes de IaC. La orquestación no persiste logs completos ni es una cola durable; monitoreo por tenant y ciclo de vida siguen pendientes. |
+
+Tras completar Ansible y comprobar el login por HTTPS, el panel guarda la
+contraseña inicial en Ansible Vault local y permite consultarla desde la lista
+de tenants. La activación local no autentica al operador y no debe usarse en
+producción. El 14 de noviembre de 2026 una prueba web con CloudFormation
+terminó `SUCCEEDED`, con tenant `ACTIVE` y login HTTPS verificado. Antes se
+completó una prueba web con Terraform; en una prueba posterior Terraform quedó
+en `configure`/`PROVISIONING` sin terminar al momento de esta revisión. No
+reintentarla sin revisar procesos y recursos AWS. Ver
+[límites y preparación](infrastructure/ansible/README.md#orquestación-demo-local).
 
 No se presentan simulaciones como despliegues reales: lo que aún no existe aparece marcado como pendiente.
 
-## Después de clonar: deja tu equipo igual que el del integrante 1
+## Después de clonar
 
 Git trae el código, las plantillas, el catálogo y el registro de las 3 AMIs. **No trae** lo que es privado o local; eso lo pones tú siguiendo estos pasos, en orden:
 
@@ -64,7 +74,7 @@ Con los pasos 1 a 4 ya funciona el panel (`pnpm dev`). Los pasos 5 a 9 solo hace
 ## Primeros pasos
 
 ```powershell
-git clone https://github.com/Willxd123/proyecto-mod-2.git
+git clone --branch parte-3-gary-respaldo https://github.com/Willxd123/proyecto-mod-2.git
 cd proyecto-mod-2
 pnpm install --frozen-lockfile
 Copy-Item apps/backend/.env.example apps/backend/.env
@@ -95,6 +105,131 @@ docker run -d --name m2-pg -e POSTGRES_PASSWORD=dev -e POSTGRES_DB=proyecto_modu
 ```
 
 Al arrancar, Nest aplica las migraciones pendientes y carga el catálogo de forma idempotente. No usa `synchronize`: cada integrante agrega **migraciones nuevas** para sus cambios y nunca edita una ya aplicada. Arranque por separado: `pnpm dev:backend` y `pnpm dev:frontend` (antes, `pnpm --filter @modulo2/contracts build`).
+
+## Preparar una demostración web AWS
+
+Estos pasos son adicionales al arranque del panel. La demo está desactivada por
+defecto, **no autentica al operador**, crea infraestructura real y puede generar
+cargos incluso si falla. Úsala solo en un equipo local confiable, con autorización
+del equipo y un identificador nuevo. No es un despliegue de producción.
+
+1. Instala AWS CLI v2 y Trivy en Windows. Para Terraform instala también
+   Terraform en Windows; CloudFormation usa AWS CLI. En Windows, instala WSL
+   con Ubuntu 24.04 y, dentro de WSL, Git, Python 3 con `venv`, Ansible,
+   Ansible Vault, SSH y la colección `community.postgresql`. La preparación de
+   paquetes requiere Node y npm disponibles en WSL o desde Windows. Comprueba
+   `aws --version`, `trivy --version`, `terraform version`, `wsl --status`,
+   `wsl --exec ansible-playbook --version` y
+   `wsl --exec ansible-galaxy collection list community.postgresql`.
+   Terraform solo es necesario si se selecciona ese motor.
+   Por ejemplo, en una terminal de Ubuntu 24.04 en WSL:
+
+   ```bash
+   sudo apt update
+   sudo apt install -y git python3 python3-venv openssh-client ansible
+   ansible-galaxy collection install community.postgresql
+   mkdir -p "$HOME/tenant-control-center/packages"
+   cd "$HOME/tenant-control-center/packages"
+   apt download python3-psycopg2
+   ```
+
+   Confirma la arquitectura y versión del paquete frente a la AMI antes de
+   usarlo. La instalación de herramientas requiere acceso a Internet; no
+   instala dependencias dentro de las instancias AWS.
+2. Configura un perfil AWS local y confirma cuenta y región siguiendo
+   [Acceso a la cuenta AWS](#acceso-a-la-cuenta-aws-compartida). Las tres AMIs
+   registradas deben existir y estar disponibles en esa cuenta y región. Antes
+   de escribir, verifica además las etiquetas y la propiedad de cada tenant.
+3. En WSL guarda una copia protegida de la clave SSH autorizada **fuera del
+   repositorio**, con permisos `0400` o `0600`; el key pair en AWS debe
+   corresponder a esa clave. Necesitas también un paquete local
+   `python3-psycopg2` compatible con Ubuntu 24.04 y la arquitectura de la AMI,
+   accesible desde WSL. No se incluye ni se descarga automáticamente.
+4. Copia `config/assistance-artifacts.example.json` a
+   `infrastructure/ansible/vars/private/artifact-sources.json` y configura allí
+   las URL HTTPS de los repositorios autorizados de asistencia, sin credenciales
+   en las URL. La utilidad prepara las revisiones de **`main`** de ambos
+   repositorios; confirma con el equipo que esas revisiones incluyen la versión
+   deseada. No utiliza automáticamente ramas de trabajo ni PR pendientes.
+5. En `apps/backend/.env`, configura `DATABASE_*` y mantén `HOST=127.0.0.1`.
+   Activa temporalmente `ARTIFACT_PREPARATION_LOCAL=true`, arranca `pnpm dev`
+   y en el paso 3 de Crear tenant usa **Comprobar paquetes**. Acepta la
+   preparación cuando corresponda y copia el identificador de 32 caracteres
+   mostrado. Se requiere acceso a GitHub y a los registros de dependencias.
+6. Completa localmente estas variables, sin compartir el `.env`:
+
+   | Variable | Valor que debe proporcionar el operador |
+   | --- | --- |
+   | `AWS_EXPECTED_ACCOUNT_ID` | ID de 12 dígitos de la cuenta autorizada. |
+   | `DEMO_SSH_CIDR` | IP pública actual del operador con `/32`. |
+   | `DEMO_SSH_PRIVATE_KEY_WSL_PATH` | Ruta absoluta Linux/WSL de la clave protegida. |
+   | `SSH_KEY_PAIR_NAME` | Nombre del key pair correspondiente en la región. |
+   | `DEMO_CERTBOT_EMAIL` | Correo válido para emisión de certificado. |
+   | `DEMO_POSTGRESQL_PSYCOPG_DEB` | Ruta absoluta WSL al paquete `.deb` compatible. |
+   | `DEMO_ARTIFACT_RELEASE` | Identificador verificado en «Comprobar paquetes». |
+   | `DEMO_ADMIN_NAME` | Nombre inicial del administrador de asistencia. |
+
+7. Configura `DEMO_PROVISIONING_LOCAL=true` y, si vas a usar la pantalla
+   independiente de Seguridad, `SECURITY_SCAN_LOCAL=true`. Reinicia el backend
+   solo si no hay trabajos activos. Con la misma terminal y perfil AWS, abre
+   el panel, consulta **Actualizar requisitos** y resuelve cualquier faltante.
+8. En Crear tenant registra institución, correo, plan, región y motor, guarda
+   el borrador y revisa el resumen. Confirma el aprovisionamiento solo si
+   aceptas los cargos. El worker ejecuta Trivy → motor → Ansible → verificación
+   HTTPS/login; `ACTIVE` se registra solo tras la verificación. La contraseña
+   inicial verificada puede consultarse desde la lista de tenants durante la
+   demo. Conserva el Vault local y su clave con acceso restringido.
+9. Al terminar, vuelve los flags a `false` y reinicia únicamente cuando no
+   haya trabajos activos. Los recursos **no se eliminan automáticamente**.
+   Coordina su eliminación por tenant y motor, con plan y confirmación; conserva
+   el estado y los metadatos locales mientras los recursos existan.
+
+Si un trabajo permanece en `configure`, no lo reinicies ni repitas: puede estar
+ejecutando Ansible, cuya salida detallada no se muestra en el panel. El límite
+actual para ese paso es de 90 minutos, no una estimación de duración normal.
+Si se reinicia la API o se pierde el seguimiento, revisa procesos, cuenta,
+región y recursos del tenant antes de cualquier reintento o eliminación.
+El historial en memoria no sobrevive al reinicio ni constituye una cola durable.
+Los detalles de paquetes, Vault y diagnóstico están en
+[la guía de Ansible](infrastructure/ansible/README.md#orquestación-demo-local).
+
+## Archivos que se comparten y que no
+
+- Git incluye el código, `pnpm-lock.yaml`, ejemplos sin secretos, catálogo,
+  registro de AMIs, plantillas, pruebas y documentación. Las AMIs registradas
+  deben seguir disponibles en la cuenta compartida; Git no contiene las imágenes.
+- Se incluye [la plantilla Excel de prueba](plantilla_carga_asistencia_prueba_actualizada.xlsx)
+  con estudiantes sintéticos y una clase el 14 de noviembre de 2026. Para otra
+  fecha, actualiza la hoja `fechas_clase` y asegúrate de que el período del
+  módulo incluya esa fecha. No subas planillas con datos reales de estudiantes.
+- Cada integrante crea su propio `apps/backend/.env` a partir de `.env.example`.
+  El equipo entrega por canal privado autorizado el acceso IAM, ID de cuenta y
+  clave SSH; nunca se publica su contenido en Git, logs o capturas.
+- La configuración de fuentes de asistencia es local; comparte las URL sin
+  credenciales y las revisiones acordadas. Se pueden regenerar los paquetes
+  localmente; si se transfieren por canal autorizado, verifica origen, versión
+  y checksums. No subas `output/`, inventarios, estados IaC, planes, Vault ni
+  su contraseña. No borres el estado de un tenant activo para liberar espacio.
+
+## Avance y pendientes por integrante
+
+Las guías de [docs/agentes](docs/agentes/) y los requisitos de
+[docs](docs/) son la referencia del equipo. Las pruebas locales no sustituyen
+evidencia AWS. Algunos documentos de entregas anteriores contienen estados
+históricos; este resumen refleja lo verificado hasta el 14 de noviembre de 2026.
+
+| Integrante | Realizado / pendiente |
+| --- | --- |
+| [1 — imágenes y catálogo](docs/agentes/01-imagenes-catalogo.md) | Catálogo, cloud-init y tres AMIs verificadas. Mantener el registro y comprobar disponibilidad AWS; compartir versiones y evidencia con el equipo. |
+| [2 — motor principal](docs/agentes/02-motor-principal.md) | Terraform probado en AWS y en una demo web; OpenTofu probado localmente, no en AWS ni integrado en la demo web. Investigar la prueba Terraform posterior que quedó en configuración y repetir la validación completa cuando sea seguro. |
+| [3 — segundo motor y seguridad](docs/agentes/03-motor-seguridad.md) | CloudFormation, escáner de secretos Trivy y UI/API local implementados; flujo web CloudFormation con HTTPS y login verificado. Según la guía completa, faltan análisis de configuración IaC, incluida la regla de 5432, cobertura de los archivos previstos, simulación de fuga desde la UI e historial de auditorías; el plan de integración no exige tabla histórica. |
+| [4 — Ansible y asistencia](docs/agentes/04-configuracion-asistencia.md) | Configuración, importación, asistencia, aislamiento y persistencia probados en AWS; el flujo CloudFormation llegó a login. Falta verificar suspensión/reanudación y renovación automática real del certificado, y coordinar métricas remotas. |
+| [5 — orquestación](docs/agentes/05-orquestacion.md) | Existe una demo local sin autenticación. Faltan autenticación, bloqueo compartido, recuperación tras reinicios, diagnóstico durable, suspensión/reanudación, eliminación confirmada desde el panel y gestión de targets. |
+| [6 — observabilidad y entrega](docs/agentes/06-observabilidad.md) | Hay métricas del panel y una base Prometheus/Grafana. Faltan conectividad y métricas de tenants, dashboard, alertas reales persistidas y evidencia de defensa. |
+
+Para la entrega conjunta aún hay que demostrar dos planes y dos motores,
+operaciones de ciclo de vida y observabilidad real. No confundir una prueba de
+un motor con una validación de todos los flujos o de producción.
 
 ## Acceso a la cuenta AWS compartida
 

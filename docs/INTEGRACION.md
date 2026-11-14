@@ -21,7 +21,8 @@ agrega `GET /api/demo-provisioning/capabilities`,
 `GET /api/demo-provisioning/operations/:slug`. Solo aceptan loopback, el origen
 del panel local y confirmación del slug; el cliente no envía comandos, rutas,
 variables cloud ni credenciales. El backend arma la solicitud desde PostgreSQL
-y limita el modo demo a Terraform y CloudFormation. El worker ejecuta Trivy,
+y limita el modo demo a Terraform y CloudFormation. El worker ejecuta los 3
+escáneres de seguridad (`trivy`, `checkov` + regla `5432` y `cfn-lint` / Trivy Config),
 preflight AWS de solo lectura y, tras la confirmación de creación en la UI, el
 motor elegido, Ansible y verificación HTTPS/login antes de marcar `ACTIVE`.
 Un fallo pasa a `ERROR`; los resultados parciales verificados se conservan para
@@ -47,11 +48,13 @@ La respuesta también enumera las etapas previstas en orden, todas con estado
 `not_started`: es un diagnóstico del flujo general y no sustituye el estado
 del worker demo, consultable por la ruta de operaciones local.
 
-El escáner Trivy y el segundo motor CloudFormation pueden ejecutarse localmente
-según `infrastructure/cloudformation/README.md`. La pantalla de escaneo es
-optativa y requiere activación local; no autentica al operador ni integra el
-resultado con el flujo de producción. El worker demo vuelve a escanear el
-handoff y bloquea hallazgos antes de cualquiera de los motores.
+Los 3 escáneres de seguridad (`trivy`, `checkov` + regla `5432` y `cfn-lint` / Trivy Config)
+y el segundo motor CloudFormation pueden ejecutarse localmente según
+`infrastructure/cloudformation/README.md`. La pantalla de escaneo es optativa
+y requiere activación local; no autentica al operador ni integra el resultado
+con el flujo de producción. El worker demo vuelve a escanear el handoff, emite
+las advertencias informativas (`HIGH`/`MEDIUM`/`LOW`) y bloquea únicamente ante
+secretos o hallazgos `CRITICAL` antes de cualquiera de los motores.
 
 La consulta de credenciales de demostración está deshabilitada por defecto con
 `DEMO_PROVISIONING_LOCAL=false`. Cuando se habilita, solo acepta solicitudes

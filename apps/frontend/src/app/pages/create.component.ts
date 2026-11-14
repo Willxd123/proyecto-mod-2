@@ -2,7 +2,7 @@ import { Component, computed, inject, OnDestroy, signal } from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { forkJoin } from 'rxjs';
 import { HttpErrorResponse } from '@angular/common/http';
-import { EMAIL_PATTERN, TENANT_SLUG_PATTERN, type CreationReadiness, type DemoProvisioningCapabilities, type DemoProvisioningOperation, type GoldenImage, type IaCEngine, type Plan, type TenantDraftCreated, type TenantValidationError } from '@modulo2/contracts';
+import { EMAIL_PATTERN, TENANT_SLUG_PATTERN, type CreationReadiness, type DemoProvisioningCapabilities, type DemoProvisioningOperation, type GoldenImage, type IaCEngine, type Plan, type SecurityScanResult, type TenantDraftCreated, type TenantValidationError } from '@modulo2/contracts';
 import { ApiService } from '../api.service';
 import { ROLES } from './plans.component';
 
@@ -105,10 +105,41 @@ const ENGINES: { id: IaCEngine; label: string }[] = [
               <div class="notice info" style="margin-top:12px">cloud-init (primer arranque): swap de 2 GiB, zona horaria America/La_Paz, hostname <code>{{ slugOrPlaceholder() }}-&lt;rol&gt;</code> y llaves SSH públicas.</div>
             </div>
             <div class="card">
-              <div class="card-head"><div><h2>Escáner de seguridad y secretos expuestos (pre-deploy)</h2><p>Verifica antes de aprovisionar que no existan credenciales ni llaves en los archivos de infraestructura.</p></div><span class="rf-badge">RF-11, RNF-Seguridad · Integrante 3</span></div>
-              <div class="notice info">El escáner local analiza paquetes preparados desde la sección de seguridad.
-                La ejecución automática antes del despliegue depende de la integración del orquestador.
-                <a class="link" routerLink="/seguridad">Abrir escáner →</a></div>
+              <div class="card-head"><div><h2>Escáneres de seguridad y secretos expuestos (pre-deploy · 3 escáneres)</h2><p>Verifica antes de aprovisionar que no existan secretos ni errores CRITICAL en la solicitud y las plantillas IaC (Trivy + Checkov + cfn-lint).</p></div><span class="rf-badge">RF-11, RNF-Seguridad · Integrante 3</span></div>
+              <div class="grid cols-3" style="margin-bottom:12px">
+                <div class="mini"><h3>1. Trivy Secret Scanner</h3><p>Detecta llaves AWS, tokens y secretos expuestos (bloqueante).</p></div>
+                <div class="mini"><h3>2. Checkov IaC &amp; Puerto 5432</h3><p>Valida políticas Cloud y que el puerto 5432 no esté abierto a 0.0.0.0/0.</p></div>
+                <div class="mini"><h3>3. Trivy Config &amp; cfn-lint</h3><p>Analiza configuración IaC: detiene en CRITICAL y avisa en HIGH/MEDIUM/LOW.</p></div>
+              </div>
+              <div class="notice info">
+                <div>
+                  Los 3 escáneres se ejecutan automáticamente al iniciar el aprovisionamiento en el Paso 3 y también pueden consultarse desde la vista de Seguridad.
+                  @if (savedDraft(); as draft) {
+                    <div style="margin-top:8px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+                      <button class="btn sm primary" type="button" (click)="runPredeployScan()" [disabled]="predeployScanBusy()">
+                        {{ predeployScanBusy() ? 'Analizando con 3 escáneres…' : 'Probar los 3 escáneres en este borrador' }}
+                      </button>
+                      <a class="link" [routerLink]="['/seguridad']" [queryParams]="{ tenant: draft.tenant_slug }">Abrir vista completa de escáneres →</a>
+                    </div>
+                  } @else {
+                    <div style="margin-top:6px">Guarda el borrador abajo para probar los 3 escáneres desde aquí o <a class="link" [routerLink]="['/seguridad']" [queryParams]="slugValid() ? { tenant: slug().trim() } : {}">abrir la vista de escáneres →</a></div>
+                  }
+                </div>
+              </div>
+              @if (predeployScanError()) { <div class="notice err" style="margin-top:12px" role="alert">{{ predeployScanError() }}</div> }
+              @if (predeployScanResult(); as scan) {
+                <div class="notice" style="margin-top:12px" [class.err]="scan.status === 'blocked'" [class.ok]="scan.status === 'clean'" role="status">
+                  <div>
+                    <strong>{{ scan.status === 'blocked' ? 'Despliegue bloqueado por secretos o errores CRITICAL.' : 'Escaneo aprobado (0 errores CRITICAL y 0 secretos expuestos).' }}</strong>
+                    @for (item of scan.scanners ?? []; track item.scanner) {
+                      <p>• <strong>{{ item.label }}:</strong> {{ item.message }}</p>
+                    }
+                    @for (finding of scan.findings; track $index) {
+                      <p class="mono">[{{ finding.blocking ? 'BLOQUEANTE' : 'ADVERTENCIA' }} · {{ finding.scanner ?? 'trivy' }} · {{ finding.severity }}] {{ finding.rule_id }} — {{ finding.message ?? '' }}</p>
+                    }
+                  </div>
+                </div>
+              }
             </div>
           }
 
@@ -131,7 +162,7 @@ const ENGINES: { id: IaCEngine; label: string }[] = [
                 @if (demoCapabilitiesError()) {
                   <div class="field-error" role="alert">{{ demoCapabilitiesError() }}</div>
                 } @else if (demoCapabilities().enabled) {
-                  <div class="notice warn">Modo local de demostración sin autenticación del operador. La confirmación puede crear recursos AWS con cargos. No se eliminan automáticamente si el flujo falla.</div>
+                  <!-- <div class="notice warn">Modo local de demostración sin autenticación del operador. La confirmación puede crear recursos AWS con cargos. No se eliminan automáticamente si el flujo falla.</div> -->
                   @if (!demoCapabilities().ready) {
                     <div class="muted">Requisitos pendientes: {{ demoCapabilities().missing.join(', ') || 'no se pudo verificar la configuración local' }}.</div>
                   }
@@ -230,6 +261,23 @@ export class CreateComponent implements OnDestroy {
   readonly artifactBusy = signal(false);
   readonly artifactMessage = signal('');
   readonly artifactError = signal('');
+  readonly predeployScanBusy = signal(false);
+  readonly predeployScanError = signal('');
+  readonly predeployScanResult = signal<SecurityScanResult | null>(null);
+  runPredeployScan() {
+    const draft = this.savedDraft();
+    if (!draft || this.predeployScanBusy()) return;
+    this.predeployScanBusy.set(true);
+    this.predeployScanError.set('');
+    this.predeployScanResult.set(null);
+    this.api.securityScan(draft.tenant_slug).subscribe({
+      next: ({ data }) => { this.predeployScanResult.set(data); this.predeployScanBusy.set(false); },
+      error: (error: HttpErrorResponse) => {
+        this.predeployScanBusy.set(false);
+        this.predeployScanError.set(typeof error.error?.message === 'string' ? error.error.message : 'No se pudo ejecutar el escaneo local.');
+      },
+    });
+  }
   ngOnDestroy() {
     if (this.artifactTimer) clearTimeout(this.artifactTimer);
     if (this.demoTimer) clearTimeout(this.demoTimer);

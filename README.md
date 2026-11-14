@@ -23,7 +23,7 @@ Qué funciona hoy en el panel y qué no:
 | Golden Images (RF-09, RF-13) | Registro validado en `config/golden-images.json`, reflejado en la tabla `golden_images` y expuesto en `/api/golden-images`. |
 | Crear tenant | Asistente con borradores. El modo opcional `DEMO_PROVISIONING_LOCAL=true` habilita Terraform/CloudFormation → Ansible → login HTTPS desde este equipo; crea recursos AWS reales y puede generar cargos. Está desactivado por defecto y no autentica al operador. |
 | Lista de tenants | Consulta los registros de PostgreSQL, con filtros y consulta de credenciales demo verificadas. Las acciones de ciclo de vida son del integrante 5. |
-| Escáner y monitoreo | El worker demo ejecuta Trivy antes de IaC. La orquestación no persiste logs completos ni es una cola durable; monitoreo por tenant y ciclo de vida siguen pendientes. |
+| Escáner y monitoreo | El worker demo y la vista `/seguridad` ejecutan 3 escáneres (`Trivy`, `Checkov` + regla `5432` y `Trivy Config / cfn-lint`) antes de IaC: bloquean en secretos y `CRITICAL`, y muestran advertencias informativas en `HIGH`/`MEDIUM`/`LOW`. La orquestación no persiste logs completos ni es una cola durable; monitoreo por tenant y ciclo de vida siguen pendientes. |
 
 Tras completar Ansible y comprobar el login por HTTPS, el panel guarda la
 contraseña inicial en Ansible Vault local y permite consultarla desde la lista
@@ -43,7 +43,7 @@ Git trae el código, las plantillas, el catálogo y el registro de las 3 AMIs. *
 
 | # | Qué | Quién lo da | Cómo |
 | --- | --- | --- | --- |
-| 1 | Herramientas: Node 22 (≥ 22.12), pnpm 10, Python 3.10+, AWS CLI v2, Git | Tú | Ver [Requisitos](#requisitos) |
+| 1 | Herramientas: Node 22 (≥ 22.12), pnpm 10, Python 3.10+ (`checkov`, `cfn-lint`), Trivy, AWS CLI v2, Git | Tú | Ver [Requisitos](#requisitos) |
 | 2 | Dependencias | Git + pnpm | `pnpm install --frozen-lockfile` |
 | 3 | PostgreSQL con la base `proyecto_modulo_2` | Tú | Instalado local o con Docker (ver [Primeros pasos](#primeros-pasos)) |
 | 4 | `apps/backend/.env` | Tú | `Copy-Item apps/backend/.env.example apps/backend/.env` y completa `DATABASE_PASSWORD` |
@@ -67,7 +67,8 @@ Con los pasos 1 a 4 ya funciona el panel (`pnpm dev`). Los pasos 5 a 9 solo hace
 
 - Node.js **22.12 o superior de la rama 22** y pnpm 10 (`corepack enable` o `npm i -g pnpm@10`).
 - PostgreSQL 15+ con una base llamada `proyecto_modulo_2` (o Docker, ver más abajo).
-- Python 3.10+ (utilidades de infraestructura).
+- Python 3.10+ (utilidades de infraestructura y escáneres Python: `pip install checkov cfn-lint`).
+- Trivy (`trivy --version`, usado tanto para detección de secretos como para configuraciones IaC `misconfig`).
 - AWS CLI v2 (para trabajar con la cuenta compartida).
 - Git. En Windows, PowerShell.
 
@@ -113,12 +114,12 @@ defecto, **no autentica al operador**, crea infraestructura real y puede generar
 cargos incluso si falla. Úsala solo en un equipo local confiable, con autorización
 del equipo y un identificador nuevo. No es un despliegue de producción.
 
-1. Instala AWS CLI v2 y Trivy en Windows. Para Terraform instala también
+1. Instala AWS CLI v2, Trivy y los escáneres Python (`pip install checkov cfn-lint`) en Windows. Para Terraform instala también
    Terraform en Windows; CloudFormation usa AWS CLI. En Windows, instala WSL
    con Ubuntu 24.04 y, dentro de WSL, Git, Python 3 con `venv`, Ansible,
    Ansible Vault, SSH y la colección `community.postgresql`. La preparación de
    paquetes requiere Node y npm disponibles en WSL o desde Windows. Comprueba
-   `aws --version`, `trivy --version`, `terraform version`, `wsl --status`,
+   `aws --version`, `trivy --version`, `checkov --version`, `cfn-lint --version`, `terraform version`, `wsl --status`,
    `wsl --exec ansible-playbook --version` y
    `wsl --exec ansible-galaxy collection list community.postgresql`.
    Terraform solo es necesario si se selecciona ese motor.
@@ -174,11 +175,17 @@ del equipo y un identificador nuevo. No es un despliegue de producción.
    solo si no hay trabajos activos. Con la misma terminal y perfil AWS, abre
    el panel, consulta **Actualizar requisitos** y resuelve cualquier faltante.
 8. En Crear tenant registra institución, correo, plan, región y motor, guarda
-   el borrador y revisa el resumen. Confirma el aprovisionamiento solo si
-   aceptas los cargos. El worker ejecuta Trivy → motor → Ansible → verificación
-   HTTPS/login; `ACTIVE` se registra solo tras la verificación. La contraseña
-   inicial verificada puede consultarse desde la lista de tenants durante la
-   demo. Conserva el Vault local y su clave con acceso restringido.
+   el borrador y revisa el resumen. En el Paso 2 puedes probar directamente los
+   **3 escáneres de seguridad** (`Trivy Secret Scanner`, `Checkov IaC & Regla 5432` y
+   `Trivy Config & cfn-lint`) sobre el borrador o consultarlos en `/seguridad`.
+   Confirma el aprovisionamiento en el Paso 3 solo si aceptas los cargos. El worker
+   ejecuta los 3 escáneres (deteniendo el despliegue únicamente ante secretos o
+   hallazgos `CRITICAL` como el puerto `5432` expuesto a `0.0.0.0/0`, y mostrando
+   en consola las advertencias informativas `HIGH`/`MEDIUM`/`LOW`) → motor IaC →
+   Ansible → verificación HTTPS/login; `ACTIVE` se registra solo tras la
+   verificación. La contraseña inicial verificada puede consultarse desde la lista
+   de tenants durante la demo. Conserva el Vault local y su clave con acceso
+   restringido.
 9. Al terminar, vuelve los flags a `false` y reinicia únicamente cuando no
    haya trabajos activos. Los recursos **no se eliminan automáticamente**.
    Coordina su eliminación por tenant y motor, con plan y confirmación; conserva
@@ -222,7 +229,7 @@ históricos; este resumen refleja lo verificado hasta el 14 de noviembre de 2026
 | --- | --- |
 | [1 — imágenes y catálogo](docs/agentes/01-imagenes-catalogo.md) | Catálogo, cloud-init y tres AMIs verificadas. Mantener el registro y comprobar disponibilidad AWS; compartir versiones y evidencia con el equipo. |
 | [2 — motor principal](docs/agentes/02-motor-principal.md) | Terraform probado en AWS y en una demo web; OpenTofu probado localmente, no en AWS ni integrado en la demo web. Investigar la prueba Terraform posterior que quedó en configuración y repetir la validación completa cuando sea seguro. |
-| [3 — segundo motor y seguridad](docs/agentes/03-motor-seguridad.md) | CloudFormation, escáner de secretos Trivy y UI/API local implementados; flujo web CloudFormation con HTTPS y login verificado. Según la guía completa, faltan análisis de configuración IaC, incluida la regla de 5432, cobertura de los archivos previstos, simulación de fuga desde la UI e historial de auditorías; el plan de integración no exige tabla histórica. |
+| [3 — segundo motor y seguridad](docs/agentes/03-motor-seguridad.md) | CloudFormation, 3 escáneres pre-deploy (`Trivy`, `Checkov` + regla `5432` y `Trivy Config / cfn-lint`) y UI/API local implementados; flujo web CloudFormation con HTTPS y login verificado. Según la guía completa, aún faltan simulación interactiva de fuga desde la UI e historial persistido de auditorías en PostgreSQL; el plan de integración no exige tabla histórica. |
 | [4 — Ansible y asistencia](docs/agentes/04-configuracion-asistencia.md) | Configuración, importación, asistencia, aislamiento y persistencia probados en AWS; el flujo CloudFormation llegó a login. Falta verificar suspensión/reanudación y renovación automática real del certificado, y coordinar métricas remotas. |
 | [5 — orquestación](docs/agentes/05-orquestacion.md) | Existe una demo local sin autenticación. Faltan autenticación, bloqueo compartido, recuperación tras reinicios, diagnóstico durable, suspensión/reanudación, eliminación confirmada desde el panel y gestión de targets. |
 | [6 — observabilidad y entrega](docs/agentes/06-observabilidad.md) | Hay métricas del panel y una base Prometheus/Grafana. Faltan conectividad y métricas de tenants, dashboard, alertas reales persistidas y evidencia de defensa. |

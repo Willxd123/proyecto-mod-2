@@ -91,7 +91,7 @@ test('escaneo local exige activación y no acepta rutas ni comandos', async () =
 test('controlador de escaneo rechaza origen y cliente ajenos', async () => {
   const { SecurityController } = require('../apps/backend/dist/security/security.controller');
   let calls = 0;
-  const controller = new SecurityController({ scan: async () => { calls++; return {}; } });
+  const controller = new SecurityController({ scan: async () => { calls++; return { tenant_slug: 'i3-test', status: 'clean', findings: [] }; } }, { record: async () => {} });
   const local = { socket: { remoteAddress: '127.0.0.1' } };
   const remote = { socket: { remoteAddress: '192.0.2.1' } };
   await assert.rejects(() => controller.scan(remote, 'http://localhost:4200', 'TenantControlCenter', {}));
@@ -169,7 +169,7 @@ test('credenciales demo requieren activación, tenant activo y comprobación de 
 test('consulta de credenciales demo rechaza orígenes y clientes ajenos', async () => {
   const { DemoCredentialsController } = require('../apps/backend/dist/demo-credentials/demo-credentials.controller');
   let calls = 0;
-  const controller = new DemoCredentialsController({ reveal: async () => { calls++; return {}; } });
+  const controller = new DemoCredentialsController({ reveal: async () => { calls++; return {}; } }, { record: async () => {} });
   const local = { socket: { remoteAddress: '127.0.0.1' } };
   const remote = { socket: { remoteAddress: '192.0.2.1' } };
   await assert.rejects(() => controller.reveal(remote, 'http://localhost:4200', 'TenantControlCenter', 'i3-test', {}));
@@ -185,7 +185,7 @@ test('aprovisionamiento demo requiere activación local y confirmación exacta',
   const oldEnabled = process.env.DEMO_PROVISIONING_LOCAL;
   const oldHost = process.env.HOST;
   let tenant = { slug: 'i3-test', status: 'PENDING', engine: 'pulumi' };
-  const service = new DemoProvisioningService({ findOneBy: async () => tenant }, {}, {});
+  const service = new DemoProvisioningService({ findOneBy: async () => tenant }, {}, {}, { record: async () => {} }, { sync: async () => {} });
   try {
     delete process.env.DEMO_PROVISIONING_LOCAL;
     await assert.rejects(() => service.start('i3-test', { confirm: 'i3-test' }));
@@ -226,7 +226,7 @@ test('el diagnóstico demo acepta nombres de configuración en mayúsculas', asy
       });
       return child;
     });
-    const capabilities = await new DemoProvisioningService({}, {}, {}).capabilities();
+    const capabilities = await new DemoProvisioningService({}, {}, {}, { record: async () => {} }, { sync: async () => {} }).capabilities();
     assert.deepEqual(capabilities, {
       enabled: true, ready: false, missing: ['AWS_EXPECTED_ACCOUNT_ID'], supported_engines: [],
     });
@@ -267,7 +267,7 @@ test('inicio local reclama el borrador atómicamente y construye la solicitud de
         return { affected: 1 };
       },
     };
-    const service = new DemoProvisioningService(repository, { findOneBy: async () => plan }, { list: async () => images });
+    const service = new DemoProvisioningService(repository, { findOneBy: async () => plan }, { list: async () => images }, { record: async () => {} }, { sync: async () => {} });
     service.capabilities = async () => ({ enabled: true, ready: true, missing: [], supported_engines: ['terraform'] });
     let workerInput;
     service.runWorker = (_slug, input) => { workerInput = input; };
@@ -304,7 +304,7 @@ test('el resultado estructurado final del worker llega a la persistencia', async
   };
   child.kill = () => {};
   t.mock.method(childProcess, 'spawn', () => child);
-  const service = new DemoProvisioningService({}, {}, {});
+  const service = new DemoProvisioningService({}, {}, {}, { record: async () => {} }, { sync: async () => {} });
   const operation = { operation_id: '00000000-0000-4000-8000-000000000001', tenant_slug: 'i3-test',
     status: 'RUNNING', stage: 'verify', events: [], result: null, access_url: null, error: null };
   const finished = new Promise(resolve => {
@@ -325,7 +325,7 @@ test('el resultado fallido se persiste sin sobrescribir metadatos ni direcciones
     findOneBy: async () => tenant,
     query: async (sql, params) => { update = { sql, params }; return [[{ slug: tenant.slug }], 1]; },
   };
-  const service = new DemoProvisioningService(repository, {}, {});
+  const service = new DemoProvisioningService(repository, {}, {}, { record: async () => {} }, { sync: async () => {} });
   const operation = { operation_id: '00000000-0000-4000-8000-000000000001', tenant_slug: tenant.slug,
     status: 'RUNNING', stage: 'provision', events: [], result: null, access_url: null, error: null };
   service.jobs.set(tenant.slug, operation);
@@ -345,7 +345,7 @@ test('un fallo de persistencia sigue visible para el diagnóstico de la operaci�
   const service = new DemoProvisioningService({
     findOneBy: async () => tenant,
     query: async () => { throw new Error('database unavailable'); },
-  }, {}, {});
+  }, {}, {}, { record: async () => {} }, { sync: async () => {} });
   const operation = { operation_id: '00000000-0000-4000-8000-000000000001', tenant_slug: tenant.slug,
     status: 'RUNNING', stage: 'provision', events: [], result: null, access_url: null, error: null };
   service.jobs.set(tenant.slug, operation);
@@ -377,7 +377,7 @@ test('PostgreSQL guarda el resultado demo sin tocar tenants reales', { skip: pro
     const service = new DemoProvisioningService({
       findOneBy: async () => tenant,
       query: (sql, params) => runner.query(sql, params),
-    }, {}, {});
+    }, {}, {}, { record: async () => {} }, { sync: async () => {} });
     const operation = { operation_id: '00000000-0000-4000-8000-000000000001', tenant_slug: tenant.slug,
       status: 'RUNNING', stage: 'provision', events: [], result: null, access_url: null, error: null };
     service.jobs.set(tenant.slug, operation);
@@ -451,7 +451,7 @@ test('la lista solo anuncia credenciales verificadas sin exponer los metadatos',
     { slug: 'i3-test', status: 'ACTIVE', deployment_metadata: { demo_initial_credentials_verified: true, internal: 'no-publicar' } },
     { slug: 'i3-other', status: 'PENDING', deployment_metadata: { demo_initial_credentials_verified: true } },
   ] };
-  const result = await new TenantsController(repository, {}).list();
+  const result = await new TenantsController(repository, {}, { record: async () => {} }).list();
   assert.equal(result.data[0].demo_credentials_available, true);
   assert.equal(result.data[1].demo_credentials_available, false);
   assert.ok(!JSON.stringify(result).includes('no-publicar'));

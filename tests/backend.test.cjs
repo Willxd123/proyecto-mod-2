@@ -7,6 +7,7 @@ const os = require('node:os');
 const backendRequire = require('node:module').createRequire(path.resolve('apps/backend/package.json'));
 const previousDemoProvisioning = process.env.DEMO_PROVISIONING_LOCAL;
 process.env.DEMO_PROVISIONING_LOCAL = 'false';
+process.env.ADMIN_PASSWORD = ''; // el login se prueba en lifecycle.test.cjs
 backendRequire('reflect-metadata');
 const { NestFactory } = backendRequire('@nestjs/core');
 const { DataSource } = backendRequire('typeorm');

@@ -1,0 +1,4 @@
+name: tenant-control-center
+runtime:
+  name: python
+description: Tenant aislado de tres servidores (frontend, backend y base de datos) en AWS

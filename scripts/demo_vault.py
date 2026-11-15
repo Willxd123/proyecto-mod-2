@@ -156,6 +156,37 @@ def stage(slug, value):
     return tenant_dir
 
 
+def refresh(slug, value):
+    """Reemplaza el inventario y la IP pública del frontend de un tenant ya preparado (al reanudar cambia la IP)."""
+    if not isinstance(value, dict) or set(value) != {'inventory', 'frontend_ip'}:
+        raise ValueError('Datos de actualización inválidos.')
+    address = str(value['frontend_ip'])
+    if not re.fullmatch(r'(?:\d{1,3}\.){3}\d{1,3}', address) or max(int(part) for part in address.split('.')) > 255:
+        raise ValueError('IP pública inválida.')
+    inventory = Path(value['inventory'])
+    if inventory.is_symlink():
+        raise ValueError('Inventario privado inválido.')
+    inventory = inventory.resolve(strict=True)
+    if not inventory.is_file() or inventory.stat().st_size > 1024 * 1024:
+        raise ValueError('Inventario privado inválido.')
+    directory = ROOT / 'tenants' / slug
+    if directory.is_symlink() or not directory.is_dir() or directory.stat().st_mode & 0o077:
+        raise ValueError('No existe una preparación privada segura para este tenant.')
+    variables_path = directory / 'tenant-vars.json'
+    if variables_path.is_symlink() or not variables_path.is_file():
+        raise ValueError('Variables privadas inválidas.')
+    variables = json.loads(variables_path.read_text(encoding='utf-8'))
+    if variables.get('tenant_slug') != slug:
+        raise ValueError('Las variables no corresponden al tenant.')
+    variables['frontend_public_ip'] = address
+    variables['frontend_server_name'] = address
+    for name, data in (('inventory.yml', inventory.read_bytes()), ('tenant-vars.json', (json.dumps(variables, indent=2) + '\n').encode())):
+        temporary = directory / (name + '.tmp')
+        temporary.unlink(missing_ok=True)
+        write_new(temporary, data)
+        os.replace(temporary, directory / name)
+
+
 def tenant_paths(slug):
     directory = ROOT / 'tenants' / slug
     if directory.is_symlink() or not directory.is_dir():
@@ -170,7 +201,7 @@ def tenant_paths(slug):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=['create', 'stage', 'paths', 'reveal'])
+    parser.add_argument('action', choices=['create', 'stage', 'refresh', 'paths', 'reveal'])
     parser.add_argument('--tenant', required=True)
     args = parser.parse_args()
     try:
@@ -180,6 +211,9 @@ def main():
         elif args.action == 'stage':
             stage(args.tenant, json.load(sys.stdin))
             print('Variables e inventario preparados en almacenamiento privado.')
+        elif args.action == 'refresh':
+            refresh(args.tenant, json.load(sys.stdin))
+            print('Inventario y variables actualizados en almacenamiento privado.')
         elif args.action == 'paths':
             print(json.dumps(tenant_paths(args.tenant)))
         else:

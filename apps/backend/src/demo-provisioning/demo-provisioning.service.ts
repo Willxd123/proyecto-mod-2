@@ -14,22 +14,37 @@ import {
 import { CatalogPlan, Tenant } from '../database/entities';
 import { ImagesService } from '../images/images.service';
 import { REPO_ROOT } from '../paths';
+import { AuditService } from '../audit/audit.service';
+import { MonitoringTargetsService } from '../lifecycle/monitoring-targets.service';
 
 type WorkerEvent = { stage: string; message: string; status: 'running' | 'succeeded' | 'failed' };
 
-const ENGINES = ['terraform', 'cloudformation'] as const;
+const ENGINES = ['terraform', 'opentofu', 'pulumi', 'cloudformation'] as const;
 const WORKER_STAGES = new Set(['prepare', 'scan', 'preflight', 'provision', 'configure', 'verify', 'complete', 'failed', 'result']);
 
 @Injectable()
 export class DemoProvisioningService {
   private readonly jobs = new Map<string, DemoProvisioningOperation>();
   private readonly children = new Map<string, ChildProcessWithoutNullStreams>();
+  private readonly actors = new Map<string, string>();
+  private readonly chains = new Map<string, Promise<void>>();
 
   constructor(
     @InjectRepository(Tenant) private readonly tenants: Repository<Tenant>,
     @InjectRepository(CatalogPlan) private readonly plans: Repository<CatalogPlan>,
     private readonly images: ImagesService,
+    private readonly audit: AuditService,
+    private readonly targets: MonitoringTargetsService,
   ) {}
+
+  /** Registra un evento de la creación en la auditoría, en orden por operación. */
+  private audited(operation: DemoProvisioningOperation, status: 'STARTED' | 'RUNNING' | 'SUCCEEDED' | 'FAILED', stage: string, message: string): void {
+    const previous = this.chains.get(operation.operation_id) ?? Promise.resolve();
+    this.chains.set(operation.operation_id, previous.then(() => this.audit.record({
+      actor: this.actors.get(operation.operation_id) ?? 'local', action: 'CREATE', status, tenant_slug: operation.tenant_slug,
+      operation_id: operation.operation_id, stage, message,
+    })));
+  }
 
   enabled(): boolean {
     return process.env.DEMO_PROVISIONING_LOCAL === 'true'
@@ -42,7 +57,7 @@ export class DemoProvisioningService {
     return { enabled: true, ready: result.ready, missing: result.missing, supported_engines: result.supported_engines };
   }
 
-  async start(slug: string, body: unknown): Promise<DemoProvisioningOperation> {
+  async start(slug: string, body: unknown, actor = 'local'): Promise<DemoProvisioningOperation> {
     if (!this.enabled()) throw new ForbiddenException('Aprovisionamiento demo local deshabilitado.');
     if (!TENANT_SLUG_PATTERN.test(slug) || !body || typeof body !== 'object' || Array.isArray(body)
         || Object.keys(body).join(',') !== 'confirm' || (body as { confirm?: unknown }).confirm !== slug) {
@@ -53,7 +68,7 @@ export class DemoProvisioningService {
     if (!tenant) throw new NotFoundException('No existe el tenant solicitado.');
     if (tenant.status !== 'PENDING') throw new ConflictException('Solo se puede aprovisionar un borrador PENDING.');
     if (!ENGINES.includes(tenant.engine as typeof ENGINES[number])) {
-      throw new ConflictException('El modo demo solo admite Terraform o CloudFormation.');
+      throw new ConflictException('El modo demo solo admite Terraform, OpenTofu, Pulumi o CloudFormation.');
     }
 
     const capabilities = await this.capabilities();
@@ -80,6 +95,8 @@ export class DemoProvisioningService {
     const updated = await this.tenants.update({ slug, status: 'PENDING' }, { status: 'PROVISIONING', resources });
     if (updated.affected !== 1) throw new ConflictException('El tenant cambió de estado; no se inició el aprovisionamiento.');
     this.jobs.set(slug, operation);
+    this.actors.set(operation.operation_id, actor);
+    this.audited(operation, 'STARTED', 'queued', `Creación del tenant solicitada (${tenant.engine}, plan ${tenant.plan_slug}).`);
 
     this.runWorker(slug, {
       tenant: {
@@ -218,6 +235,7 @@ export class DemoProvisioningService {
         operation.events.push(this.event(operation, event.stage, event.message,
           event.status === 'failed' ? 'FAILED' : event.status === 'succeeded' ? 'SUCCEEDED' : 'RUNNING'));
         if (operation.events.length > 40) operation.events.splice(0, operation.events.length - 40);
+        if (event.status !== 'failed') this.audited(operation, 'RUNNING', event.stage, event.message);
         if (event.status === 'failed') fail(event.message);
       } catch {
         fail('El proceso local devolvió un evento inválido; se detuvo sin exponer su salida.');
@@ -282,7 +300,7 @@ export class DemoProvisioningService {
       && result.network.subnet_ids.length <= 10 && result.network.security_group_ids.length <= 10
       && result.network.subnet_ids.every(id => /^subnet-[a-f0-9]+$/.test(id))
       && result.network.security_group_ids.every(id => /^sg-[a-f0-9]+$/.test(id))
-      && ['local-workspace', 'cloudformation'].includes(result.state_reference.backend)
+      && ['local-workspace', 'cloudformation', 'pulumi-local'].includes(result.state_reference.backend)
       && typeof result.state_reference.key_or_stack === 'string'
       && result.state_reference.key_or_stack.length <= 300 && !/[\u0000-\u001f]/.test(result.state_reference.key_or_stack);
   }
@@ -352,9 +370,10 @@ export class DemoProvisioningService {
             || typeof candidate.application_revision !== 'string'
             || !/^[a-f0-9]{40}:[a-f0-9]{40}$/.test(candidate.application_revision)
             || typeof candidate.infrastructure_revision !== 'string' || !/^[a-f0-9]{64}$/.test(candidate.infrastructure_revision)
-            || (tenant.engine === 'terraform'
-              ? typeof candidate.engine_version !== 'string' || !/^Terraform v\d+\.\d+\.\d+$/.test(candidate.engine_version)
-              : candidate.engine_version !== 'AWS CloudFormation service API')
+            || (tenant.engine === 'cloudformation'
+              ? candidate.engine_version !== 'AWS CloudFormation service API'
+              : typeof candidate.engine_version !== 'string'
+                || !(tenant.engine === 'opentofu' ? /^OpenTofu v\d+\.\d+\.\d+$/ : tenant.engine === 'pulumi' ? /^Pulumi v\d+\.\d+\.\d+$/ : /^Terraform v\d+\.\d+\.\d+$/).test(candidate.engine_version))
             || typeof candidate.ansible_version !== 'string' || !/^ansible \[core \d+\.\d+(?:\.\d+)?\]$/.test(candidate.ansible_version)
             || !Array.isArray(candidate.images) || candidate.images.length !== SERVER_ROLES.length
             || !snapshot || snapshot.slug !== tenant.plan_slug
@@ -398,6 +417,7 @@ export class DemoProvisioningService {
     operation.error = success ? null : message;
     if (success) operation.events.push(this.event(operation, 'complete', 'Tenant configurado y login HTTPS verificado.', 'SUCCEEDED'));
     else operation.events.push(this.event(operation, 'failed', message, 'FAILED'));
+    this.audited(operation, success ? 'SUCCEEDED' : 'FAILED', success ? 'complete' : 'failed', success ? 'Tenant configurado y login HTTPS verificado.' : message);
     if (operation.events.length > 40) operation.events.splice(0, operation.events.length - 40);
     try {
       const resources = {
@@ -424,11 +444,15 @@ export class DemoProvisioningService {
         throw new Error('Tenant status changed before operation completion.');
       }
       this.jobs.delete(slug);
+      if (success && result) {
+        void this.targets.sync(slug, tenant.environment, result.nodes, this.actors.get(operation.operation_id) ?? 'local', operation.operation_id);
+      }
     } catch {
       operation.status = 'FAILED';
       operation.stage = 'persistence';
       operation.error = 'No se pudo guardar el estado del tenant; requiere reconciliación manual antes de reintentar.';
       operation.events.push(this.event(operation, 'persistence', operation.error, 'FAILED'));
+      this.audited(operation, 'FAILED', 'persistence', operation.error);
       console.error('No se pudo persistir el resultado de una operación demo; requiere revisión manual.');
     } finally {
       this.children.delete(slug);

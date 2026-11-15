@@ -50,6 +50,9 @@ def infrastructure_snapshot(engine):
     base = ROOT / 'infrastructure'
     if engine == 'cloudformation':
         paths = [base / 'cloudformation' / 'tenant.yaml']
+    elif engine == 'pulumi':
+        paths = ([base / 'pulumi' / name for name in ('__main__.py', 'Pulumi.yaml', 'requirements.txt')]
+                 + [base / 'cloud-init' / f'{role}.yaml.tmpl' for role in ('frontend', 'backend', 'database')])
     elif engine in ('terraform', 'opentofu'):
         engine_dir = base / ('opentofu' if engine == 'opentofu' else 'terraform')
         module = base / 'terraform' / 'modules' / 'tenant'
@@ -89,7 +92,7 @@ def json_strings(value, label='request'):
 def detect_postgres_5432_exposure(infrastructure):
     """Regla crítica de la guía: verificar que el puerto 5432 no esté abierto a 0.0.0.0/0 ni ::/0."""
     for name, raw in infrastructure.items():
-        if not name.endswith(('.yaml', '.yml', '.tf')):
+        if not name.endswith(('.yaml', '.yml', '.tf', '.py')):
             continue
         lines = [line for line in raw.decode('utf-8', errors='ignore').splitlines()
                  if not line.lstrip().startswith('#')]
@@ -105,6 +108,11 @@ def detect_postgres_5432_exposure(infrastructure):
         elif name.endswith('.tf'):
             for match in re.finditer(r'resource\s+"aws_(?:vpc_)?security_group[^"]*"\s+"[^"]+"\s*\{([^}]*)\}', text, re.S):
                 block = match.group(1)
+                if '5432' in block and ('0.0.0.0/0' in block or '::/0' in block):
+                    return True
+        elif name.endswith('.py'):
+            for match in re.finditer(r'\{[^{}]*\}', text, re.S):
+                block = match.group(0)
                 if '5432' in block and ('0.0.0.0/0' in block or '::/0' in block):
                     return True
     return False

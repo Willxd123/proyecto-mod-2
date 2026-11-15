@@ -305,7 +305,7 @@ export class CreateComponent implements OnDestroy {
       next: ({ data }) => {
         if (data.ready) {
           this.artifactBusy.set(false);
-          this.artifactMessage.set(`Paquetes verificados para backend ${data.revisions.backend} y frontend ${data.revisions.frontend}.`);
+          this.artifactMessage.set(`Paquetes verificados para backend ${data.revisions.backend} y frontend ${data.revisions.frontend}. Identificador para DEMO_ARTIFACT_RELEASE: ${data.release}.`);
           return;
         }
         const approved = window.confirm(`No existen paquetes para estas revisiones de main:\nBackend: ${data.revisions.backend}\nFrontend: ${data.revisions.frontend}\n\n¿Deseas descargarlas y preparar los paquetes localmente?`);
@@ -366,7 +366,7 @@ export class CreateComponent implements OnDestroy {
   engineSupported(engine: IaCEngine): boolean {
     const capabilities = this.demoCapabilities();
     return !capabilities.enabled || !capabilities.ready
-      || capabilities.supported_engines.includes(engine as 'terraform' | 'cloudformation');
+      || capabilities.supported_engines.includes(engine as 'terraform' | 'opentofu' | 'pulumi' | 'cloudformation');
   }
   refreshDemoCapabilities() {
     this.demoCapabilitiesLoading.set(true); this.demoCapabilitiesError.set('');

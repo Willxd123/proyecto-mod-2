@@ -1,6 +1,6 @@
 # Catálogo de planes — Entregable 4
 
-Versión del catálogo: **1.1.0**. Nube: **AWS**.
+Versión del catálogo: **1.2.0**. Nube: **AWS**.
 
 Propuesta académica del integrante 1. Cada tenant dispone de tres máquinas independientes. Las capacidades son configuraciones de laboratorio, sin precios, respaldos automáticos ni garantía de rendimiento. Los límites de estudiantes son informativos; el control de cuotas RF-05 es opcional.
 
@@ -20,9 +20,9 @@ Propuesta académica del integrante 1. Cada tenant dispone de tres máquinas ind
 
 | Plan | Política de respaldo | Instancia de referencia (backend) | Disco de la base de datos |
 | --- | --- | --- | --- |
-| Básico | Manual: pg_dump bajo demanda; sin respaldo automático (RF-19 fuera de alcance) | t3.micro | 20 GiB |
-| Estándar | Manual: pg_dump bajo demanda; sin respaldo automático (RF-19 fuera de alcance) | t3.small | 40 GiB |
-| Avanzado | Manual: pg_dump bajo demanda; sin respaldo automático (RF-19 fuera de alcance) | t3.medium | 80 GiB |
+| Básico | Manual desde el panel: respaldo (pg_dump) y restauración bajo demanda; sin respaldo automático | t3.micro | 20 GiB |
+| Estándar | Manual desde el panel: respaldo (pg_dump) y restauración bajo demanda; sin respaldo automático | t3.small | 40 GiB |
+| Avanzado | Manual desde el panel: respaldo (pg_dump) y restauración bajo demanda; sin respaldo automático | t3.medium | 80 GiB |
 
 La tabla `catalog_plans` guarda además `instance_type`, `vcpu`, `ram_gb` y `db_storage_gb` (servidor backend como referencia y disco de la base de datos); el detalle por rol vive en la columna `roles`.
 

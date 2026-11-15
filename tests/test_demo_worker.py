@@ -28,6 +28,31 @@ def sample_request():
 
 
 class DemoWorkerTests(unittest.TestCase):
+    def test_habilita_opentofu_solo_si_existe_el_binario(self):
+        ajustes = {'private_key_wsl': '/k', 'psycopg_deb_wsl': '/p', 'artifact_release': 'a' * 32, 'account_id': '123456789012'}
+        def comprobar(binarios):
+            with patch.object(demo_worker.shutil, 'which', side_effect=lambda nombre: nombre if nombre in binarios else None),                     patch.object(demo_worker, 'wsl'), patch.object(demo_worker, 'configured', return_value=ajustes), patch.object(demo_worker, 'pulumi_ready', return_value=False),                     patch.object(demo_worker, 'check_wsl_private_file'), patch.object(demo_worker, 'verify_artifacts'),                     patch.object(demo_worker, 'aws_json', return_value={'Account': '123456789012'}),                     patch.dict('os.environ', {'DEMO_PROVISIONING_LOCAL': 'true'}):
+                return demo_worker.check_setup()['supported_engines']
+        base = {'python', 'aws', 'trivy', 'wsl.exe'}
+        self.assertEqual(comprobar(base | {'terraform'}), ['terraform', 'cloudformation'])
+        self.assertEqual(comprobar(base | {'terraform', 'tofu'}), ['terraform', 'opentofu', 'cloudformation'])
+        self.assertEqual(comprobar(base | {'tofu'}), ['opentofu', 'cloudformation'])
+
+    def test_pulumi_se_ofrece_solo_si_esta_listo(self):
+        ajustes = {'private_key_wsl': '/k', 'psycopg_deb_wsl': '/p', 'artifact_release': 'a' * 32, 'account_id': '123456789012'}
+        def comprobar(listo):
+            with patch.object(demo_worker.shutil, 'which', side_effect=lambda nombre: None if nombre == 'tofu' else nombre),                     patch.object(demo_worker, 'wsl'), patch.object(demo_worker, 'configured', return_value=ajustes),                     patch.object(demo_worker, 'pulumi_ready', return_value=listo),                     patch.object(demo_worker, 'check_wsl_private_file'), patch.object(demo_worker, 'verify_artifacts'),                     patch.object(demo_worker, 'aws_json', return_value={'Account': '123456789012'}),                     patch.dict('os.environ', {'DEMO_PROVISIONING_LOCAL': 'true'}):
+                return demo_worker.check_setup()['supported_engines']
+        self.assertEqual(comprobar(True), ['terraform', 'pulumi', 'cloudformation'])
+        self.assertEqual(comprobar(False), ['terraform', 'cloudformation'])
+
+    def test_lee_la_solicitud_como_utf8_aunque_la_consola_sea_cp1252(self):
+        import io
+        payload = {'plan': {'name': 'Básico', 'description': 'tamaño de base de datos'}}
+        class Entrada:
+            buffer = io.BytesIO(json.dumps(payload, ensure_ascii=False).encode('utf-8'))
+        self.assertEqual(demo_worker.read_request(Entrada()), payload)
+
     def test_worker_refuses_to_run_without_explicit_local_opt_in(self):
         with patch.dict('os.environ', {'DEMO_PROVISIONING_LOCAL': 'false'}):
             with self.assertRaises(demo_worker.DemoError):
@@ -53,8 +78,8 @@ class DemoWorkerTests(unittest.TestCase):
         settings = {'account_id': '1' * 12, 'private_key_wsl': '/home/user/key.pem',
                     'psycopg_deb_wsl': '/home/user/driver.deb', 'artifact_release': 'a' * 32}
         with patch.dict('os.environ', {'DEMO_PROVISIONING_LOCAL': 'true'}):
-            with patch.object(demo_worker.shutil, 'which', side_effect=lambda name: None if name == 'terraform' else 'tool'):
-                with patch.object(demo_worker, 'configured', return_value=settings), \
+            with patch.object(demo_worker.shutil, 'which', side_effect=lambda name: None if name in ('terraform', 'tofu') else 'tool'):
+                with patch.object(demo_worker, 'configured', return_value=settings), patch.object(demo_worker, 'pulumi_ready', return_value=False), \
                         patch.object(demo_worker, 'check_wsl_private_file'), \
                         patch.object(demo_worker, 'verify_artifacts'), \
                         patch.object(demo_worker, 'wsl', return_value=b'ok'), \

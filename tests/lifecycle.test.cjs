@@ -94,6 +94,10 @@ test('ciclo de vida: rechaza solicitudes sin origen local, confirmación o estad
   assert.equal(info.simulated, true);
   assert.deepEqual(info.allowed_actions.sort(), ['backup', 'delete', 'suspend']);
   assert.equal(info.instances.length, 3);
+  await database().query("UPDATE tenants SET status = 'ERROR' WHERE slug = $1", [SLUG]);
+  const enError = (await (await api(`/tenants/${SLUG}/lifecycle`)).json()).data.allowed_actions;
+  assert.ok(enError.includes('resume') && enError.includes('delete') && !enError.includes('suspend'), 'un tenant en ERROR puede reintentar la reanudación');
+  await database().query("UPDATE tenants SET status = 'ACTIVE' WHERE slug = $1", [SLUG]);
   assert.ok(info.will_delete.some(line => line.includes('vpc-0abc123')));
 });
 

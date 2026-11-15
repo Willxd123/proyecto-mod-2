@@ -64,7 +64,7 @@ const TITLES: Record<string, string> = { create: 'Iniciar aprovisionamiento', ba
                   @if (tenant.status === 'PENDING') { <button class="btn sm primary" (click)="open('create', tenant)">Iniciar aprovisionamiento</button> }
                   @if (tenant.status !== 'DELETED') { <button class="btn sm" (click)="open('rename', tenant)">Actualizar nombre</button> }
                   @if (tenant.status === 'ACTIVE') { <button class="btn sm" (click)="open('backup', tenant)">Respaldar</button> <button class="btn sm" (click)="open('restore', tenant)">Restaurar</button> <button class="btn sm" (click)="open('suspend', tenant)">Suspender</button> }
-                  @if (tenant.status === 'SUSPENDED') { <button class="btn sm" (click)="open('resume', tenant)">Reanudar</button> }
+                  @if (tenant.status === 'SUSPENDED' || tenant.status === 'ERROR') { <button class="btn sm" (click)="open('resume', tenant)" [title]="tenant.status === 'ERROR' ? 'Vuelve a iniciar las instancias y a configurar la aplicación con la IP actual' : ''">{{ tenant.status === 'ERROR' ? 'Reintentar reanudación' : 'Reanudar' }}</button> }
                   @if (['ACTIVE', 'SUSPENDED', 'ERROR'].includes(tenant.status)) { <button class="btn sm danger" (click)="open('delete', tenant)">Eliminar</button> }
                 </td>
               </tr>

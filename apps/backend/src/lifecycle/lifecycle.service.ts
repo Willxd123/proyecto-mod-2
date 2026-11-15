@@ -18,7 +18,7 @@ interface Rule { from: string[]; busy: string; done: string; audit: AuditAction;
 /** Transiciones permitidas: cada operación mueve el tenant de un estado estable a uno ocupado y luego a otro estable. */
 const RULES: Record<LifecycleAction, Rule> = {
   suspend: { from: ['ACTIVE'], busy: 'SUSPENDING', done: 'SUSPENDED', audit: 'SUSPEND', verb: 'Suspender' },
-  resume: { from: ['SUSPENDED'], busy: 'RESUMING', done: 'ACTIVE', audit: 'RESUME', verb: 'Reanudar' },
+  resume: { from: ['SUSPENDED', 'ERROR'], busy: 'RESUMING', done: 'ACTIVE', audit: 'RESUME', verb: 'Reanudar' },
   delete: { from: ['ACTIVE', 'SUSPENDED', 'ERROR'], busy: 'DELETING', done: 'DELETED', audit: 'DELETE', verb: 'Eliminar' },
   backup: { from: ['ACTIVE'], busy: 'BACKING_UP', done: 'ACTIVE', audit: 'BACKUP', verb: 'Respaldar' },
   restore: { from: ['ACTIVE'], busy: 'RESTORING', done: 'ACTIVE', audit: 'RESTORE', verb: 'Restaurar' },

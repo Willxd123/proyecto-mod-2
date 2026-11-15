@@ -117,9 +117,11 @@
 - name: Detectar certificado existente
   ansible.builtin.stat:
     path: "/etc/letsencrypt/live/campus-cloud-{{ tenant_slug }}/fullchain.pem"
-  register: frontend_certificate
+  register: frontend_certificate_actual
 
-- name: Verificar certificado existente antes de usarlo
+# OpenSSL 3.0 no evalúa -checkip cuando se combina con -checkend: se comprueban por separado y se lee el texto,
+# porque -checkip devuelve 0 aunque la IP no coincida.
+- name: Comprobar que el certificado existente cubre la IP actual
   ansible.builtin.command:
     argv:
       - openssl
@@ -129,12 +131,46 @@
       - -noout
       - -checkip
       - "{{ frontend_server_name }}"
+  changed_when: false
+  failed_when: false
+  register: frontend_existing_certificate_ip
+  when: frontend_certificate_actual.stat.exists
+
+- name: Comprobar la vigencia del certificado existente
+  ansible.builtin.command:
+    argv:
+      - openssl
+      - x509
+      - -in
+      - "/etc/letsencrypt/live/campus-cloud-{{ tenant_slug }}/fullchain.pem"
+      - -noout
       - -checkend
       - "0"
   changed_when: false
-  register: frontend_existing_certificate_check
-  failed_when: frontend_existing_certificate_check.rc != 0 or 'does NOT match' in frontend_existing_certificate_check.stdout
-  when: frontend_certificate.stat.exists
+  failed_when: false
+  register: frontend_existing_certificate_validity
+  when: frontend_certificate_actual.stat.exists
+
+# Tras reanudar un tenant la IP pública cambia: un certificado de otra IP o vencido se retira para emitir uno nuevo.
+- name: Retirar el certificado que no corresponde a la IP actual o está vencido
+  ansible.builtin.command:
+    argv:
+      - /snap/bin/certbot
+      - delete
+      - --non-interactive
+      - --cert-name
+      - "campus-cloud-{{ tenant_slug }}"
+  when:
+    - frontend_certificate_actual.stat.exists
+    - >-
+      'does NOT match' in frontend_existing_certificate_ip.stdout
+      or frontend_existing_certificate_validity.rc != 0
+      or 'will expire' in frontend_existing_certificate_validity.stdout
+
+- name: Detectar certificado vigente para la IP actual
+  ansible.builtin.stat:
+    path: "/etc/letsencrypt/live/campus-cloud-{{ tenant_slug }}/fullchain.pem"
+  register: frontend_certificate
 
 - name: Definir el formato de registro para métricas
   ansible.builtin.copy:
@@ -199,7 +235,7 @@
       ansible.builtin.fail:
         msg: Falló la emisión ACME; revisar conectividad, puerto 80 y logs privados de Certbot.
 
-- name: Verificar identidad y vigencia del certificado
+- name: Verificar que el certificado cubre la IP del tenant
   ansible.builtin.command:
     argv:
       - openssl
@@ -209,11 +245,21 @@
       - -noout
       - -checkip
       - "{{ frontend_server_name }}"
-      - -checkend
-      - "0"
   changed_when: false
   register: frontend_certificate_check
   failed_when: frontend_certificate_check.rc != 0 or 'does NOT match' in frontend_certificate_check.stdout
+
+- name: Verificar vigencia del certificado
+  ansible.builtin.command:
+    argv:
+      - openssl
+      - x509
+      - -in
+      - "/etc/letsencrypt/live/campus-cloud-{{ tenant_slug }}/fullchain.pem"
+      - -noout
+      - -checkend
+      - "0"
+  changed_when: false
 
 - name: Activar HTTPS en Nginx
   ansible.builtin.template:

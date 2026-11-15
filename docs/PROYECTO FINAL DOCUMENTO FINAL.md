@@ -103,7 +103,7 @@ Para no presentar una simulación como un despliegue real, cada capacidad indica
 
 ## **1.4. Organización del Código: Monorepo y Guiones del Video**
 
-Todo el proyecto está en **un único repositorio (monorepo)** gestionado con `pnpm workspaces`. Los entregables 1 y 2 no son repositorios distintos: son carpetas del mismo repositorio.
+Todo el proyecto está en **un único repositorio (monorepo)**, llamado **`proyecto-mod-2`** en GitHub, gestionado con `pnpm workspaces`. Los entregables 1 y 2 no son repositorios distintos: son carpetas del mismo repositorio.
 
 | Carpeta del monorepo | Contenido | Entregable |
 | ----- | ----- | :---: |

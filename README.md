@@ -6,7 +6,7 @@ Monorepo académico del panel administrador de tenants de la plataforma multi-te
 
 ## Este repositorio es un monorepo
 
-Todo el proyecto vive en **un solo repositorio** (workspace `pnpm`): el panel, el backend, la infraestructura, los scripts, la observabilidad y la documentación. Los entregables 1 y 2 son carpetas de este mismo repositorio, no repositorios distintos.
+El repositorio en GitHub se llama **`proyecto-mod-2`** (`https://github.com/Willxd123/proyecto-mod-2`). Todo el proyecto vive en **ese único repositorio** (workspace `pnpm`): el panel, el backend, la infraestructura, los scripts, la observabilidad y la documentación. Los entregables 1 y 2 son carpetas de este mismo repositorio, no repositorios distintos.
 
 | Quiero… | Está en |
 | --- | --- |
@@ -314,7 +314,7 @@ Sustituye `TU_IP_PUBLICA` por tu IP pública real (por ejemplo, la que muestra `
 **Reglas de la cuenta compartida** (resumen de `AGENTS.md`):
 
 - Tener acceso técnico **no autoriza** modificar recursos de otros integrantes.
-- Etiqueta todo lo que crees con `Project=proyecto-modulo-2`, `MemberId=integrante-N`, `TenantId` y `RunId`. Verifica cuenta y región antes de escribir.
+- Etiqueta todo lo que crees con `Project=proyecto-modulo-2` (valor fijo de la etiqueta de AWS; **no es el nombre del repositorio** y no debe cambiarse: el código lo usa para reconocer y borrar solo recursos del proyecto), `MemberId=integrante-N`, `TenantId` y `RunId`. Verifica cuenta y región antes de escribir.
 - Estado de IaC **separado por tenant y por motor**. No apliques un motor sobre recursos de otro.
 - Prohibido borrar por nombre parcial, por cuenta completa o "todo lo del usuario IAM". Borra por ID exacto, verificando etiquetas.
 - Las AMIs y sus snapshots facturan mientras existan. No las elimines sin acordarlo con el integrante 1.

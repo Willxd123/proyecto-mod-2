@@ -23,8 +23,10 @@ export class ArtifactsService {
   private run(args: string[]): Promise<AssistanceArtifactInspection> {
     const windows = process.platform === 'win32';
     const executable = windows ? 'wsl.exe' : 'python3';
+    // WSL_DISTRO fija la distribución cuando la predeterminada no es Ubuntu (por ejemplo docker-desktop).
+    const distro = /^[A-Za-z0-9._-]{1,60}$/.test(process.env.WSL_DISTRO ?? '') ? ['-d', process.env.WSL_DISTRO as string] : [];
     const argv = windows
-      ? ['--exec', 'python3', 'scripts/prepare_assistance_artifacts.py', ...args]
+      ? [...distro, '--exec', 'python3', 'scripts/prepare_assistance_artifacts.py', ...args]
       : ['scripts/prepare_assistance_artifacts.py', ...args];
     return new Promise((resolve, reject) => {
       const child = spawn(executable, argv, { cwd: REPO_ROOT, windowsHide: true });

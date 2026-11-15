@@ -1,8 +1,9 @@
 import { Controller, Get, Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { databaseOptions } from './database/options';
-import { CatalogPlan, GoldenImageRecord, Tenant } from './database/entities';
+import { AuditEvent, CatalogPlan, GoldenImageRecord, Tenant, TenantAlert, TenantBackup } from './database/entities';
 import { CatalogController } from './catalog/catalog.controller';
 import { CatalogService } from './catalog/catalog.service';
 import { ImagesController } from './images/images.controller';
@@ -18,6 +19,20 @@ import { DemoCredentialsService } from './demo-credentials/demo-credentials.serv
 import { DemoProvisioningController } from './demo-provisioning/demo-provisioning.controller';
 import { DemoProvisioningService } from './demo-provisioning/demo-provisioning.service';
 
+import { AuditController } from './audit/audit.controller';
+import { AuditService } from './audit/audit.service';
+import { AuthController } from './auth/auth.controller';
+import { AuthGuard } from './auth/auth.guard';
+import { AuthService } from './auth/auth.service';
+import { LifecycleController } from './lifecycle/lifecycle.controller';
+import { LifecycleService } from './lifecycle/lifecycle.service';
+import { MonitoringTargetsService } from './lifecycle/monitoring-targets.service';
+import { LogsController } from './logs/logs.controller';
+import { LogsService } from './logs/logs.service';
+import { MonitoringController } from './monitoring/monitoring.controller';
+import { MonitoringService } from './monitoring/monitoring.service';
+import { TunnelsService } from './monitoring/tunnels.service';
+
 @Controller()
 class SystemController {
   constructor(private readonly database: DataSource, private readonly provisioning: DemoProvisioningService) {}
@@ -29,8 +44,9 @@ class SystemController {
 }
 
 @Module({
-  imports: [TypeOrmModule.forRoot(databaseOptions()), TypeOrmModule.forFeature([CatalogPlan, GoldenImageRecord, Tenant])],
-  controllers: [SystemController, CatalogController, ImagesController, TenantsController, ArtifactsController, SecurityController, DemoCredentialsController, DemoProvisioningController],
-  providers: [CatalogService, ImagesService, TenantsService, ArtifactsService, SecurityService, DemoCredentialsService, DemoProvisioningService],
+  imports: [TypeOrmModule.forRoot(databaseOptions()), TypeOrmModule.forFeature([CatalogPlan, GoldenImageRecord, Tenant, AuditEvent, TenantBackup, TenantAlert])],
+  controllers: [SystemController, CatalogController, ImagesController, TenantsController, ArtifactsController, SecurityController, DemoCredentialsController, DemoProvisioningController, AuthController, AuditController, LifecycleController, MonitoringController, LogsController],
+  providers: [CatalogService, ImagesService, TenantsService, ArtifactsService, SecurityService, DemoCredentialsService, DemoProvisioningService,
+    AuditService, AuthService, LifecycleService, MonitoringTargetsService, MonitoringService, TunnelsService, LogsService, { provide: APP_GUARD, useClass: AuthGuard }],
 })
 export class AppModule {}

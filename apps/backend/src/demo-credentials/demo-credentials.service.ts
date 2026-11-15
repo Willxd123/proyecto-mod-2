@@ -32,8 +32,9 @@ export class DemoCredentialsService {
   private readPassword(slug: string): Promise<string> {
     const windows = process.platform === 'win32';
     const binary = windows ? 'wsl.exe' : 'python3';
+    const distro = /^[A-Za-z0-9._-]{1,60}$/.test(process.env.WSL_DISTRO ?? '') ? ['-d', process.env.WSL_DISTRO as string] : [];
     const args = windows
-      ? ['--exec', 'python3', 'scripts/demo_vault.py', 'reveal', '--tenant', slug]
+      ? [...distro, '--exec', 'python3', 'scripts/demo_vault.py', 'reveal', '--tenant', slug]
       : ['scripts/demo_vault.py', 'reveal', '--tenant', slug];
     return new Promise((resolve, reject) => {
       const child = spawn(binary, args, { cwd: REPO_ROOT, windowsHide: true });

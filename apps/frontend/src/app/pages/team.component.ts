@@ -5,7 +5,7 @@ import { Component } from '@angular/core';
     <section class="view">
       <div class="banner">
         <h1>División equilibrada de los 6 integrantes y mapeo de requisitos funcionales (RF)</h1>
-        <p>Los requisitos tachados por el docente (<strong>RF-04, RF-05, RF-06, RF-12, RF-19 y RF-20</strong>) quedan fuera para concentrar el trabajo en lo obligatorio. El monorepo incluye instrucciones por integrante en <code>docs/agentes</code>.</p>
+        <p>Los requisitos tachados por el docente (<strong>RF-04, RF-05, RF-06 y RF-12</strong>) quedan fuera para concentrar el trabajo en lo obligatorio; <strong>RF-19 (respaldar y restaurar) y RF-20 (auditoría)</strong> sí se implementaron. El monorepo incluye instrucciones por integrante en <code>docs/agentes</code>.</p>
       </div>
       <div class="team-grid">
         @for (member of members; track member.number) {

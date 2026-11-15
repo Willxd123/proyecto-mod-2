@@ -8,7 +8,7 @@
     "dev:backend": "pnpm --filter @modulo2/backend start:dev",
     "build:backend": "pnpm --filter @modulo2/contracts build && pnpm --filter @modulo2/backend build",
     "build": "pnpm build:backend && pnpm --filter @modulo2/frontend build",
-    "test": "pnpm build:backend && node --test tests/backend.test.cjs tests/artifacts.test.cjs && python -m unittest discover -s tests -p test_*.py -v",
+    "test": "pnpm build:backend && node --test --test-concurrency=1 tests/backend.test.cjs tests/artifacts.test.cjs tests/lifecycle.test.cjs tests/monitoring.test.cjs tests/logs.test.cjs && python -m unittest discover -s tests -p test_*.py -v",
     "check": "pnpm test && pnpm build"
   },
   "devDependencies": {

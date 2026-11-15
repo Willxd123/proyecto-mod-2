@@ -1,0 +1,541 @@
+apiVersion: 1
+# Reglas de alerta como código (RF-28). Grafana las evalúa sobre Prometheus y entrega cada alerta al panel
+# (POST /api/monitoring/alerts) con el token compartido; el panel la guarda con su tenant y hora (RF-29).
+contactPoints:
+  - orgId: 1
+    name: Tenant Control Center
+    receivers:
+      - uid: tcc-webhook
+        type: webhook
+        settings:
+          url: ${CONTROL_CENTER_URL}/api/monitoring/alerts
+          httpMethod: POST
+          authorization_scheme: Bearer
+          authorization_credentials: ${WEBHOOK_TOKEN}
+          maxAlerts: 20
+        disableResolveMessage: false
+policies:
+  - orgId: 1
+    receiver: Tenant Control Center
+    group_by: [alertname, tenant, role]
+    group_wait: 10s
+    group_interval: 1m
+    repeat_interval: 1h
+groups:
+  - orgId: 1
+    name: salud-de-tenants
+    folder: Tenant Control Center
+    interval: 1m
+    rules:
+      - {
+          "uid": "tcc-servidor-caido",
+          "title": "Servidor del tenant sin respuesta",
+          "condition": "C",
+          "data": [
+            {
+              "refId": "A",
+              "relativeTimeRange": {
+                "from": 600,
+                "to": 0
+              },
+              "datasourceUid": "prometheus",
+              "model": {
+                "expr": "up{scope=\"tenant\", job=\"tenant-nodes\"}",
+                "instant": true,
+                "intervalMs": 15000,
+                "maxDataPoints": 43200,
+                "refId": "A"
+              }
+            },
+            {
+              "refId": "B",
+              "datasourceUid": "__expr__",
+              "model": {
+                "type": "reduce",
+                "expression": "A",
+                "reducer": "last",
+                "refId": "B",
+                "settings": {
+                  "mode": "dropNN"
+                }
+              }
+            },
+            {
+              "refId": "C",
+              "datasourceUid": "__expr__",
+              "model": {
+                "type": "threshold",
+                "expression": "B",
+                "refId": "C",
+                "conditions": [
+                  {
+                    "evaluator": {
+                      "type": "lt",
+                      "params": [
+                        1
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          ],
+          "noDataState": "OK",
+          "execErrState": "OK",
+          "for": "1m",
+          "labels": {
+            "severity": "critical"
+          },
+          "annotations": {
+            "summary": "Servidor {{ $labels.role }} del tenant {{ $labels.tenant }} sin respuesta",
+            "description": "Prometheus no puede leer el node_exporter del servidor."
+          }
+        }
+      - {
+          "uid": "tcc-api-caida",
+          "title": "API del tenant con errores",
+          "condition": "C",
+          "data": [
+            {
+              "refId": "A",
+              "relativeTimeRange": {
+                "from": 600,
+                "to": 0
+              },
+              "datasourceUid": "prometheus",
+              "model": {
+                "expr": "probe_success{scope=\"tenant\", job=\"tenant-http\"}",
+                "instant": true,
+                "intervalMs": 15000,
+                "maxDataPoints": 43200,
+                "refId": "A"
+              }
+            },
+            {
+              "refId": "B",
+              "datasourceUid": "__expr__",
+              "model": {
+                "type": "reduce",
+                "expression": "A",
+                "reducer": "last",
+                "refId": "B",
+                "settings": {
+                  "mode": "dropNN"
+                }
+              }
+            },
+            {
+              "refId": "C",
+              "datasourceUid": "__expr__",
+              "model": {
+                "type": "threshold",
+                "expression": "B",
+                "refId": "C",
+                "conditions": [
+                  {
+                    "evaluator": {
+                      "type": "lt",
+                      "params": [
+                        1
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          ],
+          "noDataState": "OK",
+          "execErrState": "OK",
+          "for": "1m",
+          "labels": {
+            "severity": "critical"
+          },
+          "annotations": {
+            "summary": "La API del tenant {{ $labels.tenant }} no responde 200",
+            "description": "/api/health falla o devuelve un código de error."
+          }
+        }
+      - {
+          "uid": "tcc-postgres-caido",
+          "title": "PostgreSQL del tenant caído",
+          "condition": "C",
+          "data": [
+            {
+              "refId": "A",
+              "relativeTimeRange": {
+                "from": 600,
+                "to": 0
+              },
+              "datasourceUid": "prometheus",
+              "model": {
+                "expr": "pg_up{scope=\"tenant\", job=\"tenant-postgres\"}",
+                "instant": true,
+                "intervalMs": 15000,
+                "maxDataPoints": 43200,
+                "refId": "A"
+              }
+            },
+            {
+              "refId": "B",
+              "datasourceUid": "__expr__",
+              "model": {
+                "type": "reduce",
+                "expression": "A",
+                "reducer": "last",
+                "refId": "B",
+                "settings": {
+                  "mode": "dropNN"
+                }
+              }
+            },
+            {
+              "refId": "C",
+              "datasourceUid": "__expr__",
+              "model": {
+                "type": "threshold",
+                "expression": "B",
+                "refId": "C",
+                "conditions": [
+                  {
+                    "evaluator": {
+                      "type": "lt",
+                      "params": [
+                        1
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          ],
+          "noDataState": "OK",
+          "execErrState": "OK",
+          "for": "1m",
+          "labels": {
+            "severity": "critical"
+          },
+          "annotations": {
+            "summary": "PostgreSQL del tenant {{ $labels.tenant }} no acepta conexiones",
+            "description": "El postgres_exporter reporta pg_up = 0."
+          }
+        }
+      - {
+          "uid": "tcc-cpu-alta",
+          "title": "CPU alta en servidor del tenant",
+          "condition": "C",
+          "data": [
+            {
+              "refId": "A",
+              "relativeTimeRange": {
+                "from": 600,
+                "to": 0
+              },
+              "datasourceUid": "prometheus",
+              "model": {
+                "expr": "100 - (avg by (tenant, environment, role) (rate(node_cpu_seconds_total{scope=\"tenant\", mode=\"idle\"}[2m])) * 100)",
+                "instant": true,
+                "intervalMs": 15000,
+                "maxDataPoints": 43200,
+                "refId": "A"
+              }
+            },
+            {
+              "refId": "B",
+              "datasourceUid": "__expr__",
+              "model": {
+                "type": "reduce",
+                "expression": "A",
+                "reducer": "last",
+                "refId": "B",
+                "settings": {
+                  "mode": "dropNN"
+                }
+              }
+            },
+            {
+              "refId": "C",
+              "datasourceUid": "__expr__",
+              "model": {
+                "type": "threshold",
+                "expression": "B",
+                "refId": "C",
+                "conditions": [
+                  {
+                    "evaluator": {
+                      "type": "gt",
+                      "params": [
+                        85
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          ],
+          "noDataState": "OK",
+          "execErrState": "OK",
+          "for": "2m",
+          "labels": {
+            "severity": "warning"
+          },
+          "annotations": {
+            "summary": "CPU de {{ $labels.role }} del tenant {{ $labels.tenant }} sobre 85%",
+            "description": "Uso de CPU por encima del límite durante 2 minutos."
+          }
+        }
+      - {
+          "uid": "tcc-memoria-alta",
+          "title": "Memoria alta en servidor del tenant",
+          "condition": "C",
+          "data": [
+            {
+              "refId": "A",
+              "relativeTimeRange": {
+                "from": 600,
+                "to": 0
+              },
+              "datasourceUid": "prometheus",
+              "model": {
+                "expr": "100 * (1 - node_memory_MemAvailable_bytes{scope=\"tenant\"} / node_memory_MemTotal_bytes{scope=\"tenant\"})",
+                "instant": true,
+                "intervalMs": 15000,
+                "maxDataPoints": 43200,
+                "refId": "A"
+              }
+            },
+            {
+              "refId": "B",
+              "datasourceUid": "__expr__",
+              "model": {
+                "type": "reduce",
+                "expression": "A",
+                "reducer": "last",
+                "refId": "B",
+                "settings": {
+                  "mode": "dropNN"
+                }
+              }
+            },
+            {
+              "refId": "C",
+              "datasourceUid": "__expr__",
+              "model": {
+                "type": "threshold",
+                "expression": "B",
+                "refId": "C",
+                "conditions": [
+                  {
+                    "evaluator": {
+                      "type": "gt",
+                      "params": [
+                        85
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          ],
+          "noDataState": "OK",
+          "execErrState": "OK",
+          "for": "2m",
+          "labels": {
+            "severity": "warning"
+          },
+          "annotations": {
+            "summary": "Memoria de {{ $labels.role }} del tenant {{ $labels.tenant }} sobre 85%",
+            "description": "Uso de memoria por encima del límite durante 2 minutos."
+          }
+        }
+      - {
+          "uid": "tcc-errores-5xx",
+          "title": "Errores 5xx en la aplicación del tenant",
+          "condition": "C",
+          "data": [
+            {
+              "refId": "A",
+              "relativeTimeRange": {
+                "from": 600,
+                "to": 0
+              },
+              "datasourceUid": "prometheus",
+              "model": {
+                "expr": "100 * sum by (tenant) (rate(tcc_http_errors_total{scope=\"tenant\", job=\"tenant-app\"}[5m])) / sum by (tenant) (rate(tcc_http_requests_total{scope=\"tenant\", job=\"tenant-app\"}[5m]))",
+                "instant": true,
+                "intervalMs": 15000,
+                "maxDataPoints": 43200,
+                "refId": "A"
+              }
+            },
+            {
+              "refId": "B",
+              "datasourceUid": "__expr__",
+              "model": {
+                "type": "reduce",
+                "expression": "A",
+                "reducer": "last",
+                "refId": "B",
+                "settings": {
+                  "mode": "dropNN"
+                }
+              }
+            },
+            {
+              "refId": "C",
+              "datasourceUid": "__expr__",
+              "model": {
+                "type": "threshold",
+                "expression": "B",
+                "refId": "C",
+                "conditions": [
+                  {
+                    "evaluator": {
+                      "type": "gt",
+                      "params": [
+                        5
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          ],
+          "noDataState": "OK",
+          "execErrState": "OK",
+          "for": "2m",
+          "labels": {
+            "severity": "critical"
+          },
+          "annotations": {
+            "summary": "Más del 5% de las peticiones del tenant {{ $labels.tenant }} devuelven error 5xx",
+            "description": "El backend de la aplicación está fallando; ver el panel de errores por ruta."
+          }
+        }
+      - {
+          "uid": "tcc-login-fallidos",
+          "title": "Muchos inicios de sesión fallidos en el tenant",
+          "condition": "C",
+          "data": [
+            {
+              "refId": "A",
+              "relativeTimeRange": {
+                "from": 600,
+                "to": 0
+              },
+              "datasourceUid": "prometheus",
+              "model": {
+                "expr": "sum by (tenant) (increase(tcc_login_attempts_total{scope=\"tenant\", job=\"tenant-app\", result=\"failed\"}[5m]))",
+                "instant": true,
+                "intervalMs": 15000,
+                "maxDataPoints": 43200,
+                "refId": "A"
+              }
+            },
+            {
+              "refId": "B",
+              "datasourceUid": "__expr__",
+              "model": {
+                "type": "reduce",
+                "expression": "A",
+                "reducer": "last",
+                "refId": "B",
+                "settings": {
+                  "mode": "dropNN"
+                }
+              }
+            },
+            {
+              "refId": "C",
+              "datasourceUid": "__expr__",
+              "model": {
+                "type": "threshold",
+                "expression": "B",
+                "refId": "C",
+                "conditions": [
+                  {
+                    "evaluator": {
+                      "type": "gt",
+                      "params": [
+                        10
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          ],
+          "noDataState": "OK",
+          "execErrState": "OK",
+          "for": "1m",
+          "labels": {
+            "severity": "warning"
+          },
+          "annotations": {
+            "summary": "Más de 10 inicios de sesión fallidos en 5 minutos en el tenant {{ $labels.tenant }}",
+            "description": "Posible ataque de fuerza bruta o un problema con las credenciales."
+          }
+        }
+      - {
+          "uid": "tcc-disco-alto",
+          "title": "Disco casi lleno en servidor del tenant",
+          "condition": "C",
+          "data": [
+            {
+              "refId": "A",
+              "relativeTimeRange": {
+                "from": 600,
+                "to": 0
+              },
+              "datasourceUid": "prometheus",
+              "model": {
+                "expr": "100 * (1 - node_filesystem_avail_bytes{scope=\"tenant\", mountpoint=\"/\", fstype!~\"tmpfs|overlay\"} / node_filesystem_size_bytes{scope=\"tenant\", mountpoint=\"/\", fstype!~\"tmpfs|overlay\"})",
+                "instant": true,
+                "intervalMs": 15000,
+                "maxDataPoints": 43200,
+                "refId": "A"
+              }
+            },
+            {
+              "refId": "B",
+              "datasourceUid": "__expr__",
+              "model": {
+                "type": "reduce",
+                "expression": "A",
+                "reducer": "last",
+                "refId": "B",
+                "settings": {
+                  "mode": "dropNN"
+                }
+              }
+            },
+            {
+              "refId": "C",
+              "datasourceUid": "__expr__",
+              "model": {
+                "type": "threshold",
+                "expression": "B",
+                "refId": "C",
+                "conditions": [
+                  {
+                    "evaluator": {
+                      "type": "gt",
+                      "params": [
+                        85
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          ],
+          "noDataState": "OK",
+          "execErrState": "OK",
+          "for": "5m",
+          "labels": {
+            "severity": "warning"
+          },
+          "annotations": {
+            "summary": "Disco de {{ $labels.role }} del tenant {{ $labels.tenant }} sobre 85%",
+            "description": "El volumen raíz supera el 85% de uso."
+          }
+        }

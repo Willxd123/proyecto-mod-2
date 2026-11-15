@@ -10,17 +10,20 @@ import re
 import shutil
 import subprocess
 import sys
+import threading
 import time
 
+import live_log
 from cloudformation_tenant import HANDOFF, ROLES, main as cloudformation_main
 from prepare_handoff import prepare
 from render_cloud_init import render
 import security_scan
+import pulumi_tenant
 import terraform_tenant
 
 ROOT = Path(__file__).resolve().parent.parent
 DEMO_OUTPUT = ROOT / 'output' / 'demo'
-ENGINES = {'terraform', 'cloudformation'}
+ENGINES = {'terraform', 'opentofu', 'pulumi', 'cloudformation'}
 SLUG = re.compile(r'[a-z][a-z0-9-]{2,39}\Z')
 ACCOUNT = re.compile(r'\d{12}\Z')
 KEY_NAME = re.compile(r'[A-Za-z0-9._-]{1,255}\Z')
@@ -30,8 +33,15 @@ class DemoError(Exception):
     pass
 
 
+_STDOUT = sys.stdout
+_EMIT_LOCK = threading.Lock()
+
+
 def emit(stage, message, status='running'):
-    print(json.dumps({'stage': stage, 'message': message, 'status': status}), flush=True)
+    """Un evento por línea hacia el panel. Usa el stdout original (los motores lo redirigen) y es seguro entre hilos."""
+    with _EMIT_LOCK:
+        _STDOUT.write(json.dumps({'stage': stage, 'message': message, 'status': status}) + '\n')
+        _STDOUT.flush()
 
 
 def run_silent(arguments, timeout=60, input_data=None):
@@ -45,8 +55,14 @@ def run_silent(arguments, timeout=60, input_data=None):
     return result.stdout
 
 
+def wsl_distro_args():
+    """WSL_DISTRO fija la distribución de WSL cuando la predeterminada no es Ubuntu (por ejemplo docker-desktop)."""
+    distro = os.environ.get('WSL_DISTRO', '')
+    return ['-d', distro] if re.fullmatch(r'[A-Za-z0-9._-]{1,60}', distro) else []
+
+
 def wsl(arguments, timeout=120, input_data=None):
-    return run_silent(['wsl.exe', *arguments], timeout, input_data)
+    return run_silent(['wsl.exe', *wsl_distro_args(), *arguments], timeout, input_data)
 
 
 def wsl_path(path):
@@ -127,12 +143,18 @@ def verify_artifacts(release_id):
     return directory, manifest
 
 
+def pulumi_ready():
+    """Pulumi solo se ofrece si existen su CLI y un intérprete con pulumi y pulumi-aws."""
+    return pulumi_tenant.ready()
+
+
 def check_setup():
     missing = []
     for executable in ('python', 'aws', 'trivy', 'wsl.exe'):
         if not shutil.which(executable):
             missing.append(executable.replace('.exe', ''))
     terraform_available = shutil.which('terraform') is not None
+    opentofu_available = shutil.which('tofu') is not None
     if not missing:
         try:
             wsl(['--exec', 'which', 'ansible-playbook'])
@@ -168,6 +190,10 @@ def check_setup():
         missing.append('DEMO_PROVISIONING_LOCAL')
     common_ready = not missing
     engines = ['cloudformation'] if common_ready else []
+    if common_ready and pulumi_ready():
+        engines.insert(0, 'pulumi')
+    if common_ready and opentofu_available:
+        engines.insert(0, 'opentofu')
     if common_ready and terraform_available:
         engines.insert(0, 'terraform')
     elif common_ready:
@@ -322,11 +348,31 @@ def execute_engine(request, settings):
         with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
             if cloudformation_main(['validate', *base]) != 0:
                 raise DemoError('El preflight de CloudFormation falló; no se creó el stack.')
-        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
-            args = ['create', *base, '--ssh-private-key-path', settings['private_key_wsl'], '--enable-https']
-            if cloudformation_main(args) != 0:
-                raise DemoError('CloudFormation no completó la creación; revisar el estado y la salida privada.')
+        watcher = live_log.StackEvents(lambda text: emit('provision', text), request['region'], 'i3-' + slug)
+        watcher.start()
+        try:
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                args = ['create', *base, '--ssh-private-key-path', settings['private_key_wsl'], '--enable-https']
+                if cloudformation_main(args) != 0:
+                    raise DemoError('CloudFormation no completó la creación; revisar el estado y la salida privada.')
+        finally:
+            watcher.stop()
         output = HANDOFF / slug / 'cloudformation'
+        return json.loads((output / 'provisioning-result.json').read_text(encoding='utf-8')), output / 'hosts.yml'
+
+    if request['engine'] == 'pulumi':
+        base = ['--tenant', slug, '--account-id', settings['account_id'], '--ssh-cidr', settings['ssh_cidr']]
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            if pulumi_tenant.main(['validate', *base]) != 0:
+                raise DemoError('La vista previa de Pulumi falló; no se creó el stack.')
+        pulumi_tenant.LINE_SINK = lambda text: emit('provision', text)
+        try:
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                if pulumi_tenant.main(['create', *base, '--ssh-private-key-path', settings['private_key_wsl'], '--enable-https']) != 0:
+                    raise DemoError('Pulumi no completó la creación; revisar el estado privado del tenant.')
+        finally:
+            pulumi_tenant.LINE_SINK = None
+        output = HANDOFF / slug / 'pulumi'
         return json.loads((output / 'provisioning-result.json').read_text(encoding='utf-8')), output / 'hosts.yml'
 
     tfvars = write_tfvars(request)
@@ -335,6 +381,16 @@ def execute_engine(request, settings):
               '--ssh-private-key-path', settings['private_key_wsl'], '--verify-handoff', '--enable-frontend-https']
     original_run = terraform_tenant.run
     def quiet_run(command, cwd, env, capture=False):
+        if not capture:
+            # Sin salida capturada: se muestra cada recurso que el motor crea o destruye, sin reenviar la salida cruda.
+            progress = live_log.TerraformProgress(lambda text: emit('provision', text))
+            try:
+                code = live_log.stream(command, progress, cwd=cwd, env=env, timeout=3600)
+            except OSError as error:
+                raise RuntimeError('No se pudo ejecutar el motor IaC.') from error
+            if code:
+                raise RuntimeError('El motor IaC devolvió un error; no se expondrán logs sin redactar.')
+            return ''
         try:
             completed = subprocess.run(command, cwd=cwd, env=env, check=False, text=True,
                                        stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -388,12 +444,19 @@ def configure_and_verify(slug, request, result, staged):
     inventory, variables, vault, password_file = staged
     playbook = wsl_path(ROOT / 'infrastructure' / 'ansible' / 'configure-tenant.yml')
     command = [
-        'wsl.exe', '--cd', wsl_path(ROOT), '--exec', 'env',
+        'wsl.exe', *wsl_distro_args(), '--cd', wsl_path(ROOT), '--exec', 'env',
         'ANSIBLE_SSH_ARGS=-C -o ControlMaster=auto -o ControlPersist=60s -o StrictHostKeyChecking=accept-new',
         'ansible-playbook', '-i', inventory, playbook,
         '--vault-password-file', password_file, '-e', '@' + variables, '-e', '@' + vault,
     ]
-    run_silent(command, timeout=5400)
+    # Se muestra cada play y tarea de Ansible (sin la salida cruda) mientras se configura el tenant.
+    progress = live_log.AnsibleProgress(lambda text: emit('configure', text))
+    try:
+        code = live_log.stream(command, progress, timeout=5400)
+    except OSError as error:
+        raise DemoError('Falló una comprobación requerida; revise la configuración local y el estado del tenant.') from error
+    if code:
+        raise DemoError('Falló una comprobación requerida; revise la configuración local y el estado del tenant.')
     verify = wsl(['--cd', wsl_path(ROOT), '--exec', 'python3', 'scripts/verify_demo_login.py', '--tenant', slug],
                  timeout=600)
     try:
@@ -459,8 +522,10 @@ def run(source):
         staged = stage_ansible(slug, result, inventory, request, settings, release, manifest)
         configure_and_verify(slug, request, result, staged)
         emit('verify', 'HTTPS, identidad y acceso del administrador verificados.')
-        if request['engine'] == 'terraform':
-            engine_version = run_silent(['terraform', 'version']).decode().splitlines()[0][:100]
+        if request['engine'] == 'pulumi':
+            engine_version = 'Pulumi ' + run_silent([pulumi_tenant.pulumi_binary() or 'pulumi', 'version']).decode().strip().splitlines()[0][:40]
+        elif request['engine'] in ('terraform', 'opentofu'):
+            engine_version = run_silent(['tofu' if request['engine'] == 'opentofu' else 'terraform', 'version']).decode().splitlines()[0][:100]
         else:
             engine_version = 'AWS CloudFormation service API'
         ansible_version = wsl(['--exec', 'ansible', '--version']).decode().splitlines()[0][:100]
@@ -483,12 +548,22 @@ def run(source):
             pass
 
 
+def read_request(stream):
+    """Lee la solicitud JSON de stdin siempre como UTF-8.
+
+    El backend la envía en UTF-8; en Windows Python usa la página de códigos local (cp1252) y
+    deformaba los acentos del plan («Básico» -> «BÃ¡sico»), de modo que el snapshot no coincidía con config/plans.json.
+    """
+    raw = stream.buffer.read() if hasattr(stream, 'buffer') else stream.read()
+    return json.loads(raw.decode('utf-8') if isinstance(raw, bytes) else raw)
+
+
 def main():
     try:
         if sys.argv[1:] == ['--check']:
             print(json.dumps(check_setup()), flush=True)
             return 0
-        source = json.load(sys.stdin)
+        source = read_request(sys.stdin)
         outcome = run(source)
         print(json.dumps({'stage': 'result', 'status': 'succeeded', **outcome}), flush=True)
         return 0

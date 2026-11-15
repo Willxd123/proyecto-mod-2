@@ -46,6 +46,10 @@ export class TenantAlert {
   @Column({ type: 'varchar', length: 30 }) severity!: string;
   @Column({ type: 'varchar', length: 30 }) status!: string;
   @Column('timestamptz') detected_at!: Date;
+  @Column({ type: 'varchar', length: 80, nullable: true }) fingerprint!: string | null;
+  @Column({ type: 'varchar', length: 20, nullable: true }) role!: string | null;
+  @Column({ type: 'varchar', length: 300, nullable: true }) summary!: string | null;
+  @Column({ type: 'timestamptz', nullable: true }) resolved_at!: Date | null;
 }
 
 @Entity('golden_images')
@@ -59,4 +63,29 @@ export class GoldenImageRecord {
   @Column({ type: 'varchar', length: 20 }) image_version!: string;
   @Column({ type: 'varchar', length: 40 }) source_revision!: string;
   @Column({ type: 'timestamptz', name: 'created_at' }) built_at!: Date;
+}
+
+@Entity('audit_events')
+export class AuditEvent {
+  @PrimaryGeneratedColumn({ type: 'bigint' }) id!: string;
+  @Column({ type: 'timestamptz', default: () => 'now()' }) occurred_at!: Date;
+  @Column({ type: 'varchar', length: 60 }) actor!: string;
+  @Column({ type: 'varchar', length: 40 }) action!: string;
+  @Column({ type: 'varchar', length: 20 }) status!: string;
+  @Column({ type: 'varchar', length: 63, nullable: true }) tenant_slug!: string | null;
+  @Column({ type: 'uuid', nullable: true }) operation_id!: string | null;
+  @Column({ type: 'varchar', length: 40, nullable: true }) stage!: string | null;
+  @Column({ type: 'varchar', length: 240 }) message!: string;
+  @Column({ type: 'jsonb', default: {} }) detail!: Record<string, unknown>;
+}
+
+@Entity('tenant_backups')
+export class TenantBackup {
+  @PrimaryColumn({ type: 'uuid' }) id!: string;
+  @Column({ type: 'varchar', length: 63 }) tenant_slug!: string;
+  @Column({ type: 'timestamptz', default: () => 'now()' }) created_at!: Date;
+  @Column({ type: 'varchar', length: 60 }) actor!: string;
+  @Column({ type: 'bigint' }) size_bytes!: string;
+  @Column({ type: 'char', length: 64 }) sha256!: string;
+  @Column({ type: 'boolean', default: false }) simulated!: boolean;
 }

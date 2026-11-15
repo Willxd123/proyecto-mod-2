@@ -4,38 +4,88 @@ Monorepo académico del panel administrador de tenants de la plataforma multi-te
 
 > **Lee primero** [`AGENTS.md`](AGENTS.md) (reglas de trabajo y seguridad) y la guía de tu rol en [`docs/agentes/`](docs/agentes/).
 
+## Este repositorio es un monorepo
+
+El repositorio en GitHub se llama **`proyecto-mod-2`** (`https://github.com/Willxd123/proyecto-mod-2`). Todo el proyecto vive en **ese único repositorio** (workspace `pnpm`): el panel, el backend, la infraestructura, los scripts, la observabilidad y la documentación. Los entregables 1 y 2 son carpetas de este mismo repositorio, no repositorios distintos.
+
+| Quiero… | Está en |
+| --- | --- |
+| Ver o cambiar el **panel** (Angular 20) | `apps/frontend` |
+| Ver o cambiar la **API** (NestJS 11, TypeORM, migraciones) | `apps/backend` (`src/lifecycle`, `audit`, `auth`, `monitoring`, `logs`, `tenants`, `security`) |
+| Tipos compartidos panel ↔ backend | `packages/contracts` |
+| **Catálogo de planes** y **AMIs** | `config/plans.json`, `config/golden-images.json`, [`docs/CATALOGO-PLANES.md`](docs/CATALOGO-PLANES.md) |
+| **Imágenes** (Packer) y primer arranque (cloud-init) | `infrastructure/packer`, `infrastructure/cloud-init` |
+| **Motores IaC** | `infrastructure/cloudformation`, `terraform`, `pulumi` (OpenTofu reutiliza `terraform`) |
+| **Ansible** (database, backend, frontend) | `infrastructure/ansible` |
+| **Prometheus + Grafana** (tableros y alertas como código) | `infrastructure/observability` |
+| **Workers** (crear, suspender, reanudar, eliminar, respaldar, escáneres, log en vivo) | `scripts/` |
+| **Pruebas** | `tests/` |
+| **Informe final** (entregables 3, 4, 6, 7, 8) | [`docs/PROYECTO FINAL DOCUMENTO FINAL.md`](docs/PROYECTO%20FINAL%20DOCUMENTO%20FINAL.md) |
+| Cómo operar un tenant (crear, suspender, reanudar, respaldar, restaurar, eliminar) | [`docs/INSTRUCCIONES-TENANT.md`](docs/INSTRUCCIONES-TENANT.md) |
+| **Guiones del video** | [`docs/guion/`](docs/guion/README.md) |
+| Reglas de seguridad y de trabajo | [`AGENTS.md`](AGENTS.md) |
+
+La **aplicación de asistencia** que corre dentro de cada tenant **no está aquí**: son dos repositorios aparte, `control-asistencia-backend` y `control-asistencia-frontend` (siempre la rama `main`). Este repositorio los empaqueta y los despliega.
+
 ## Estado del proyecto
 
-| Hito | Responsable | Estado |
-| --- | --- | --- |
-| M0 — Base compartida (monorepo, catálogo, contratos, panel) | Integrante 1 | Completo |
-| M1 — Golden Images y primer arranque | Integrante 1 | **Completo**: 3 AMIs construidas en `us-east-1` y verificadas con smoke test (evidencia en `docs/image.png`) |
-| M2 — Dos motores IaC compatibles | Integrantes 2 y 3 | **Parcial**: Terraform y CloudFormation crean infraestructura real; el flujo web con CloudFormation terminó correctamente. Una prueba web reciente con Terraform permaneció en configuración; investigar antes de reintentar. |
-| M3 — Aplicación de asistencia por institución | Integrante 4 | **Parcial**: Ansible, asistencia, aislamiento y persistencia se probaron en dos tenants Terraform. Falta validar suspensión/reanudación y monitoreo remoto; ver [guía de Ansible](infrastructure/ansible/README.md). |
-| M4 — Orquestación y ciclo de vida | Integrante 5 | **Parcial**: demo local opt-in con escaneo, dos motores, Ansible y login. Falta autenticación, recuperación durable y operaciones de ciclo de vida. |
-| M5 — Observabilidad por tenant | Integrante 6 | Pendiente |
+Estado al 15 de noviembre de 2026. La evidencia de cada capacidad (AWS real, local o simulada) está en la sección 1.3 del [informe final](docs/PROYECTO%20FINAL%20DOCUMENTO%20FINAL.md).
 
-Qué funciona hoy en el panel y qué no:
+| Hito | Estado |
+| --- | --- |
+| M0 — Base compartida (monorepo, catálogo, contratos, panel) | Completo |
+| M1 — Golden Images y primer arranque | Completo: 3 AMIs en `us-east-1` con smoke test |
+| M2 — Motores IaC | **CloudFormation y Terraform verificados en AWS real desde el panel.** OpenTofu y Pulumi están desbloqueados en el selector, probados con simulación y vista previa, sin despliegue real |
+| M3 — Aplicación de asistencia por institución | Ansible, HTTPS, reanudación con IP nueva y monitoreo remoto funcionan. Falta ejecutar la prueba de aislamiento entre dos tenants |
+| M4 — Orquestación y ciclo de vida | Completo: creación con log en vivo, suspender, reanudar (con **reintento desde `ERROR`**), eliminar, respaldar/restaurar, auditoría, login y visor de logs. Respaldar/restaurar solo se probó en simulación |
+| M5 — Observabilidad | Completo: Prometheus + Grafana (Resumen, Salud por tenant, 8 alertas), webhook al panel y logs. Verificado con un tenant real |
+
+Qué funciona hoy en el panel:
 
 | Parte | Estado |
 | --- | --- |
-| Catálogo de planes (RF-01, RF-02) | API desde PostgreSQL (`catalog_plans`), con columnas de capacidad y `backup_policy`. Pantalla *Planes y Golden AMIs*. |
-| Golden Images (RF-09, RF-13) | Registro validado en `config/golden-images.json`, reflejado en la tabla `golden_images` y expuesto en `/api/golden-images`. |
-| Crear tenant | Asistente con borradores. El modo opcional `DEMO_PROVISIONING_LOCAL=true` habilita Terraform/CloudFormation → Ansible → login HTTPS desde este equipo; crea recursos AWS reales y puede generar cargos. Está desactivado por defecto y no autentica al operador. |
-| Lista de tenants | Consulta los registros de PostgreSQL, con filtros y consulta de credenciales demo verificadas. Las acciones de ciclo de vida son del integrante 5. |
-| Escáner y monitoreo | El worker demo y la vista `/seguridad` ejecutan 3 escáneres (`Trivy`, `Checkov` + regla `5432` y `Trivy Config / cfn-lint`) antes de IaC: bloquean en secretos y `CRITICAL`, y muestran advertencias informativas en `HIGH`/`MEDIUM`/`LOW`. La orquestación no persiste logs completos ni es una cola durable; monitoreo por tenant y ciclo de vida siguen pendientes. |
+| Acceso | Inicio de sesión de administrador único (`ADMIN_USER` / `ADMIN_PASSWORD`). Sin `ADMIN_PASSWORD` el panel queda abierto, solo para desarrollo |
+| Catálogo (RF-01, RF-02) | API desde PostgreSQL, pantalla *Planes y Golden AMIs* |
+| Crear tenant (RF-07 a RF-11) | Borrador → 3 escáneres (Trivy, Checkov + regla 5432, Trivy Config/cfn-lint) → motor IaC → Ansible → HTTPS y login. **Crea recursos AWS reales y genera cargos.** Requiere `DEMO_PROVISIONING_LOCAL=true` |
+| Ciclo de vida (RF-14 a RF-18) | Lista con filtros, renombrar, suspender, reanudar, reintentar reanudación, eliminar con confirmación |
+| Respaldo y restauración (RF-19) | `pg_dump` / `pg_restore` por SSH; los respaldos quedan en `output/backups/<tenant>/` (ignorado por Git, datos reales) |
+| Auditoría (RF-20) | Página *Auditoría*: quién, cuándo, tenant y resultado de cada operación |
+| Monitoreo (RF-25 a RF-29) | Página *Monitoreo* con túneles, alertas y enlace a Grafana |
+| Logs | Página *Logs*: Nginx, aplicación, PostgreSQL y sistema de cada tenant `ACTIVE`, por SSH |
 
-Tras completar Ansible y comprobar el login por HTTPS, el panel guarda la
-contraseña inicial en Ansible Vault local y permite consultarla desde la lista
-de tenants. La activación local no autentica al operador y no debe usarse en
-producción. El 14 de noviembre de 2026 una prueba web con CloudFormation
-terminó `SUCCEEDED`, con tenant `ACTIVE` y login HTTPS verificado. Antes se
-completó una prueba web con Terraform; en una prueba posterior Terraform quedó
-en `configure`/`PROVISIONING` sin terminar al momento de esta revisión. No
-reintentarla sin revisar procesos y recursos AWS. Ver
-[límites y preparación](infrastructure/ansible/README.md#orquestación-demo-local).
+`LIFECYCLE_SIMULATE=true` permite probar suspender, reanudar, eliminar, respaldar y restaurar **sin tocar AWS**; todo queda marcado `[SIMULADO]` y no cuenta como evidencia real.
 
-No se presentan simulaciones como despliegues reales: lo que aún no existe aparece marcado como pendiente.
+## Levantar el proyecto en local (resumen)
+
+Hay tres piezas que se levantan por separado. Las dos primeras no necesitan AWS.
+
+| # | Pieza | Comando (desde la raíz) | Dirección |
+| --- | --- | --- | --- |
+| 1 | **PostgreSQL** del panel | `docker run -d --name m2-pg -e POSTGRES_PASSWORD=dev -e POSTGRES_DB=proyecto_modulo_2 -p 5432:5432 postgres:16` (o uno local) | `localhost:5432` |
+| 2 | **Panel + API** | `pnpm install --frozen-lockfile` y luego `pnpm dev` | Panel <http://127.0.0.1:4200> · API <http://127.0.0.1:3000/api/health> |
+| 3 | **Prometheus + Grafana** | `docker compose --env-file infrastructure/observability/.env -f infrastructure/observability/compose.yaml up -d` | Grafana <http://localhost:3002> · Prometheus <http://localhost:9090> |
+
+Pasos mínimos, en orden:
+
+```powershell
+pnpm install --frozen-lockfile
+Copy-Item apps/backend/.env.example apps/backend/.env
+# Editar apps/backend/.env: DATABASE_PASSWORD, ADMIN_PASSWORD y WEBHOOK_TOKEN
+Copy-Item infrastructure/observability/.env.example infrastructure/observability/.env
+# Editar infrastructure/observability/.env: GRAFANA_ADMIN_PASSWORD y el MISMO WEBHOOK_TOKEN
+docker compose --env-file infrastructure/observability/.env -f infrastructure/observability/compose.yaml up -d
+pnpm dev
+```
+
+- Entra al panel con `ADMIN_USER` (por defecto `admin`) y tu `ADMIN_PASSWORD`. Grafana: usuario `admin` y `GRAFANA_ADMIN_PASSWORD`. **Ningún `.env` se sube a Git.**
+- Grafana abre en **Resumen de la plataforma**. Aparece vacío («No data») hasta que haya un tenant `ACTIVE`.
+- **Para ver datos reales** hace falta un tenant creado en AWS y, en `apps/backend/.env`: `DEMO_PROVISIONING_LOCAL=true`, `LIFECYCLE_SIMULATE=false`, la llave SSH (`DEMO_SSH_PRIVATE_KEY_WSL_PATH`) y WSL con Ansible. Con eso el panel abre solo los túneles SSH y Prometheus ve el tenant. Detalles y límites: [`infrastructure/observability/README.md`](infrastructure/observability/README.md).
+- **Sin AWS:** pon `LIFECYCLE_SIMULATE=true` para probar el ciclo de vida de forma simulada. El tablero de Grafana seguirá vacío porque no hay servidores reales.
+- Si cambias los tableros o las alertas: edita `infrastructure/observability/generar_grafana.py` / `generar_resumen.py` y ejecuta `python infrastructure/observability/generar_grafana.py` (regenera los JSON de los tableros y las reglas de alerta; si Grafana no los recarga solo, reinicia su contenedor).
+- Detener Grafana: `docker compose --env-file infrastructure/observability/.env -f infrastructure/observability/compose.yaml down`.
+- Verificar todo: `pnpm check` (compila, ejecuta las pruebas con PostgreSQL y construye el panel).
+
+Operar sobre AWS (crear tenants, motores IaC, Ansible) exige además lo de [Después de clonar](#después-de-clonar) y [Acceso a la cuenta AWS](#acceso-a-la-cuenta-aws-compartida).
 
 ## Después de clonar
 
@@ -46,7 +96,8 @@ Git trae el código, las plantillas, el catálogo y el registro de las 3 AMIs. *
 | 1 | Herramientas: Node 22 (≥ 22.12), pnpm 10, Python 3.10+ (`checkov`, `cfn-lint`), Trivy, AWS CLI v2, Git | Tú | Ver [Requisitos](#requisitos) |
 | 2 | Dependencias | Git + pnpm | `pnpm install --frozen-lockfile` |
 | 3 | PostgreSQL con la base `proyecto_modulo_2` | Tú | Instalado local o con Docker (ver [Primeros pasos](#primeros-pasos)) |
-| 4 | `apps/backend/.env` | Tú | `Copy-Item apps/backend/.env.example apps/backend/.env` y completa `DATABASE_PASSWORD` |
+| 4 | `apps/backend/.env` | Tú | `Copy-Item apps/backend/.env.example apps/backend/.env` y completa `DATABASE_PASSWORD`, `ADMIN_PASSWORD` y `WEBHOOK_TOKEN` |
+| 4b | `infrastructure/observability/.env` (Grafana) | Tú | `Copy-Item infrastructure/observability/.env.example infrastructure/observability/.env`; mismo `WEBHOOK_TOKEN`; ver [Levantar el proyecto en local](#levantar-el-proyecto-en-local-resumen) |
 | 5 | Clave `.pem` (`practico7-asistencia`) | **Integrante 1**, canal privado | Guárdala **fuera del repo** y restringe permisos |
 | 6 | Credenciales IAM (Access Key ID + Secret) y el ID de la cuenta | **Integrante 1**, canal privado | `aws configure --profile modulo2` y `$env:AWS_PROFILE = "modulo2"` |
 | 7 | Comprobar la cuenta | Tú | `aws sts get-caller-identity` → el `Account` debe ser el que te dieron |
@@ -54,7 +105,7 @@ Git trae el código, las plantillas, el catálogo y el registro de las 3 AMIs. *
 | 9 | Preflight (solo lectura) | Tú | Ver [Acceso a la cuenta AWS](#acceso-a-la-cuenta-aws-compartida), con tu IP pública real |
 | 10 | Verificar todo el proyecto | Tú | `pnpm check` |
 
-Con los pasos 1 a 4 ya funciona el panel (`pnpm dev`). Los pasos 5 a 9 solo hacen falta para operar sobre AWS (motores IaC, Ansible, monitoreo).
+Con los pasos 1 a 4 ya funciona el panel (`pnpm dev`); el 4b añade Grafana. Los pasos 5 a 9 solo hacen falta para operar sobre AWS (motores IaC, Ansible, monitoreo).
 
 **Qué no necesitas replicar:**
 - `config/golden-images.json` ya viene en Git con las AMIs reales; no hay que construir nada.
@@ -75,11 +126,12 @@ Con los pasos 1 a 4 ya funciona el panel (`pnpm dev`). Los pasos 5 a 9 solo hace
 ## Primeros pasos
 
 ```powershell
-git clone --branch parte-3-gary-respaldo https://github.com/Willxd123/proyecto-mod-2.git
+git clone https://github.com/Willxd123/proyecto-mod-2.git
 cd proyecto-mod-2
+# Cambia a la rama de integración vigente (la que el equipo acuerde fusionar a main)
 pnpm install --frozen-lockfile
 Copy-Item apps/backend/.env.example apps/backend/.env
-# Editar apps/backend/.env y completar DATABASE_PASSWORD
+# Editar apps/backend/.env y completar DATABASE_PASSWORD (y ADMIN_PASSWORD)
 pnpm dev
 ```
 
@@ -110,7 +162,7 @@ Al arrancar, Nest aplica las migraciones pendientes y carga el catálogo de form
 ## Preparar una demostración web AWS
 
 Estos pasos son adicionales al arranque del panel. La demo está desactivada por
-defecto, **no autentica al operador**, crea infraestructura real y puede generar
+defecto, solo protege el panel con el usuario administrador local, crea infraestructura real y puede generar
 cargos incluso si falla. Úsala solo en un equipo local confiable, con autorización
 del equipo y un identificador nuevo. No es un despliegue de producción.
 
@@ -220,23 +272,18 @@ Los detalles de paquetes, Vault y diagnóstico están en
 
 ## Avance y pendientes por integrante
 
-Las guías de [docs/agentes](docs/agentes/) y los requisitos de
-[docs](docs/) son la referencia del equipo. Las pruebas locales no sustituyen
-evidencia AWS. Algunos documentos de entregas anteriores contienen estados
-históricos; este resumen refleja lo verificado hasta el 14 de noviembre de 2026.
+Las guías de [docs/agentes](docs/agentes/) y los requisitos de [docs](docs/) son la referencia del equipo. Las pruebas locales no sustituyen evidencia AWS. Resumen al 15 de noviembre de 2026; el detalle está en el [informe final](docs/PROYECTO%20FINAL%20DOCUMENTO%20FINAL.md).
 
 | Integrante | Realizado / pendiente |
 | --- | --- |
-| [1 — imágenes y catálogo](docs/agentes/01-imagenes-catalogo.md) | Catálogo, cloud-init y tres AMIs verificadas. Mantener el registro y comprobar disponibilidad AWS; compartir versiones y evidencia con el equipo. |
-| [2 — motor principal](docs/agentes/02-motor-principal.md) | Terraform probado en AWS y en una demo web; OpenTofu probado localmente, no en AWS ni integrado en la demo web. Investigar la prueba Terraform posterior que quedó en configuración y repetir la validación completa cuando sea seguro. |
-| [3 — segundo motor y seguridad](docs/agentes/03-motor-seguridad.md) | CloudFormation, 3 escáneres pre-deploy (`Trivy`, `Checkov` + regla `5432` y `Trivy Config / cfn-lint`) y UI/API local implementados; flujo web CloudFormation con HTTPS y login verificado. Según la guía completa, aún faltan simulación interactiva de fuga desde la UI e historial persistido de auditorías en PostgreSQL; el plan de integración no exige tabla histórica. |
-| [4 — Ansible y asistencia](docs/agentes/04-configuracion-asistencia.md) | Configuración, importación, asistencia, aislamiento y persistencia probados en AWS; el flujo CloudFormation llegó a login. Falta verificar suspensión/reanudación y renovación automática real del certificado, y coordinar métricas remotas. |
-| [5 — orquestación](docs/agentes/05-orquestacion.md) | Existe una demo local sin autenticación. Faltan autenticación, bloqueo compartido, recuperación tras reinicios, diagnóstico durable, suspensión/reanudación, eliminación confirmada desde el panel y gestión de targets. |
-| [6 — observabilidad y entrega](docs/agentes/06-observabilidad.md) | Hay métricas del panel y una base Prometheus/Grafana. Faltan conectividad y métricas de tenants, dashboard, alertas reales persistidas y evidencia de defensa. |
+| [1 — imágenes y catálogo](docs/agentes/01-imagenes-catalogo.md) | Catálogo 1.2.0, cloud-init y tres AMIs verificadas. Mantener el registro y comprobar que las AMIs sigan disponibles. |
+| [2 — motor principal](docs/agentes/02-motor-principal.md) | Terraform verificado en AWS desde el panel. OpenTofu desbloqueado en el panel, probado solo con simulación. |
+| [3 — segundo motor y seguridad](docs/agentes/03-motor-seguridad.md) | CloudFormation verificado en AWS (crear, suspender, reanudar, eliminar) y 3 escáneres pre-deploy. Pulumi añadido y probado sin desplegar. |
+| [4 — Ansible y asistencia](docs/agentes/04-configuracion-asistencia.md) | Configuración, HTTPS y reanudación con IP nueva verificadas; el rol reemite el certificado si la IP cambia. **Pendiente: prueba de aislamiento entre dos tenants.** |
+| [5 — orquestación](docs/agentes/05-orquestacion.md) | *Baja del equipo; trabajo completado.* Ciclo de vida, auditoría, login, respaldo/restauración y visor de logs. Falta probar respaldo/restauración en AWS real. Guion: [`docs/guion/05-integrante-5.md`](docs/guion/05-integrante-5.md). |
+| [6 — observabilidad y entrega](docs/agentes/06-observabilidad.md) | *Baja del equipo; trabajo completado.* Grafana, alertas, logs, arquitectura y documentación. Falta una alerta real (apagar un servicio) como evidencia. Guion: [`docs/guion/06-integrante-6.md`](docs/guion/06-integrante-6.md). |
 
-Para la entrega conjunta aún hay que demostrar dos planes y dos motores,
-operaciones de ciclo de vida y observabilidad real. No confundir una prueba de
-un motor con una validación de todos los flujos o de producción.
+Pruebas pendientes de ejecutar en AWS (las hacen otros integrantes): respaldo y restauración, aislamiento entre dos tenants y una alerta real.
 
 ## Acceso a la cuenta AWS compartida
 
@@ -267,7 +314,7 @@ Sustituye `TU_IP_PUBLICA` por tu IP pública real (por ejemplo, la que muestra `
 **Reglas de la cuenta compartida** (resumen de `AGENTS.md`):
 
 - Tener acceso técnico **no autoriza** modificar recursos de otros integrantes.
-- Etiqueta todo lo que crees con `Project=proyecto-modulo-2`, `MemberId=integrante-N`, `TenantId` y `RunId`. Verifica cuenta y región antes de escribir.
+- Etiqueta todo lo que crees con `Project=proyecto-modulo-2` (valor fijo de la etiqueta de AWS; **no es el nombre del repositorio** y no debe cambiarse: el código lo usa para reconocer y borrar solo recursos del proyecto), `MemberId=integrante-N`, `TenantId` y `RunId`. Verifica cuenta y región antes de escribir.
 - Estado de IaC **separado por tenant y por motor**. No apliques un motor sobre recursos de otro.
 - Prohibido borrar por nombre parcial, por cuenta completa o "todo lo del usuario IAM". Borra por ID exacto, verificando etiquetas.
 - Las AMIs y sus snapshots facturan mientras existan. No las elimines sin acordarlo con el integrante 1.
@@ -306,22 +353,22 @@ Reconstruir las imágenes (solo el integrante 1; genera costos): ver [`infrastru
 
 ```text
 apps/
-  frontend/                 Angular 20: panel (planes, crear tenant, tenants, espacios de integración)
-  backend/                  NestJS 11: API, entidades TypeORM y migraciones PostgreSQL
+  frontend/                 Angular 20: panel (planes, crear tenant, tenants, monitoreo, logs, auditoría)
+  backend/                  NestJS 11: API, entidades TypeORM, migraciones, ciclo de vida, auditoría, logs
 packages/contracts/         Tipos compartidos entre frontend y backend (versionados)
 config/
   plans.json                Fuente versionada del catálogo (3 planes)
   golden-images.json        Registro de las AMIs reales verificadas
 infrastructure/
-  packer/                   Plantilla y scripts de las tres imágenes por rol
-  cloud-init/               Plantillas de primer arranque, sin secretos
-  terraform/                Punto de integración del integrante 2
-  pulumi/ cloudformation/   Integrante 3
-  ansible/                  Integrante 4
-  observability/            Base Prometheus/Grafana (integrante 6)
-scripts/                    Packer en AWS, user-data, handoff, catálogo
-docs/                       Contratos, plan de integración, catálogo y guías por agente
-tests/                      Pruebas de API y de contratos de infraestructura
+  packer/ cloud-init/       Imágenes por rol y primer arranque, sin secretos
+  cloudformation/           Motor CloudFormation
+  terraform/                Motor Terraform (OpenTofu lo reutiliza)
+  pulumi/                   Motor Pulumi
+  ansible/                  Roles database, backend y frontend
+  observability/            Prometheus, Grafana, Blackbox, tableros y alertas como código
+scripts/                    Workers: crear, ciclo de vida, escáneres, log en vivo, Packer/AWS, catálogo
+docs/                       Informe final, catálogo, instrucciones del tenant, guías por agente y guiones del video
+tests/                      Pruebas de API, de infraestructura y de los workers
 ```
 
 ## Tecnologías acordadas
@@ -347,12 +394,15 @@ Código, pruebas reproducibles, lista de archivos modificados, contratos consumi
 - Las imágenes usan Ubuntu **24.04** y una única plantilla Packer parametrizada por rol.
 - No hay respaldos automáticos ni control de cuotas por plan (política `backup_policy`: manual con `pg_dump`); los límites de estudiantes son informativos.
 - Las capacidades del catálogo son propuestas de laboratorio, no precios ni garantías de rendimiento.
-- La API no tiene autenticación: no exponerla públicamente antes de definirla.
+- El panel tiene un administrador único y está pensado para ejecutarse **en el equipo local** (la API escucha solo en loopback). No exponerlo a Internet.
+- Grafana y Prometheus corren en el equipo del operador y llegan a los tenants por túneles SSH; no hay monitoreo si ese equipo está apagado.
+- Los logs de texto se leen en la página *Logs* del panel; Grafana muestra métricas (no se integró Loki).
 
 ## Documentación
 
 - [Responsabilidades y contratos](docs/INTEGRACION.md) · [Plan de integración](docs/PLAN-INTEGRACION.md)
 - [Catálogo de planes — Entregable 4](docs/CATALOGO-PLANES.md)
 - [Construir y registrar imágenes](infrastructure/packer/README.md)
-- [Base de observabilidad](infrastructure/observability/README.md)
+- [Observabilidad: Prometheus, Grafana, alertas y logs](infrastructure/observability/README.md)
+- [Informe final](docs/PROYECTO%20FINAL%20DOCUMENTO%20FINAL.md) · [Cómo operar un tenant](docs/INSTRUCCIONES-TENANT.md) · [Guiones del video](docs/guion/README.md)
 - [Adaptación de la plantilla del docente](docs/REFERENCIA-PLANTILLA.md)

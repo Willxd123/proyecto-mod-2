@@ -34,7 +34,8 @@ def aws(region, *arguments):
         raise RuntimeError('AWS devolvió una respuesta inválida.') from error
 
 
-def load_request(tenant):
+def load_handoff(tenant, engine):
+    """Lee y valida la solicitud de handoff del motor indicado; devuelve también los archivos de infraestructura."""
     if not SLUG.fullmatch(tenant):
         raise ValueError('Tenant inválido.')
     directory = (HANDOFF / tenant).resolve(strict=True)
@@ -58,8 +59,8 @@ def load_request(tenant):
         raise ValueError('El handoff contiene datos inválidos.') from error
     if not isinstance(request, dict) or request.get('tenant_slug') != tenant:
         raise ValueError('La solicitud no corresponde al tenant.')
-    if request.get('schema_version') != 1 or request.get('engine') != 'cloudformation' or request.get('provider') != 'aws':
-        raise ValueError('La solicitud no corresponde a CloudFormation en AWS.')
+    if request.get('schema_version') != 1 or request.get('engine') != engine or request.get('provider') != 'aws':
+        raise ValueError(f'La solicitud no corresponde al motor {engine} en AWS.')
     if request.get('deployable') is not True:
         raise ValueError('Una solicitud no desplegable no puede aprovisionarse.')
     if not re.fullmatch(r'[A-Za-z0-9-]{1,64}', str(request.get('request_id', ''))):
@@ -91,10 +92,15 @@ def load_request(tenant):
             raise ValueError(f'Imagen incorrecta para {role}.')
         if not re.fullmatch(r'ami-[a-f0-9]{17}', str(image.get('ami_id', ''))):
             raise ValueError(f'AMI inválida para {role}.')
-    infrastructure = infrastructure_snapshot('cloudformation')
+    infrastructure = infrastructure_snapshot(engine)
     for name, data in infrastructure.items():
         update_digest(digest, name, data)
-    return request, user_data, digest.hexdigest(), directory, infrastructure['infrastructure/cloudformation/tenant.yaml']
+    return request, user_data, digest.hexdigest(), directory, infrastructure
+
+
+def load_request(tenant):
+    request, user_data, digest, directory, infrastructure = load_handoff(tenant, 'cloudformation')
+    return request, user_data, digest, directory, infrastructure['infrastructure/cloudformation/tenant.yaml']
 
 
 def check_account(region, expected):

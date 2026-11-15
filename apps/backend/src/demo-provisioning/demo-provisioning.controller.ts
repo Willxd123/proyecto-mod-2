@@ -1,5 +1,6 @@
 import { Body, Controller, ForbiddenException, Get, Header, Headers, Param, Post, Req } from '@nestjs/common';
 import type { Request } from 'express';
+import type { ActorRequest } from '../auth/auth.guard';
 import { DemoProvisioningService } from './demo-provisioning.service';
 
 @Controller('demo-provisioning')
@@ -30,13 +31,13 @@ export class DemoProvisioningController {
 
   @Post(':slug/start')
   @Header('Cache-Control', 'no-store')
-  async start(@Req() request: Request, @Headers('origin') origin: string | undefined,
+  async start(@Req() request: ActorRequest, @Headers('origin') origin: string | undefined,
               @Headers('x-requested-with') marker: string | undefined,
               @Param('slug') slug: string, @Body() body: unknown) {
     this.requireLocal(request, marker);
     if (!['http://127.0.0.1:4200', 'http://localhost:4200'].includes(origin ?? '')) {
       throw new ForbiddenException('El aprovisionamiento demo solo admite solicitudes del panel local.');
     }
-    return { data: await this.provisioning.start(slug, body) };
+    return { data: await this.provisioning.start(slug, body, request.actor ?? 'local') };
   }
 }

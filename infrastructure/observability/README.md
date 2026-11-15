@@ -1,30 +1,90 @@
-# Base de observabilidad para el integrante 6
+# Observabilidad del Tenant Control Center (RF-25 a RF-29)
 
-El panel ya entrega métricas reales de su proceso en `/api/metrics` y un resumen visible en Monitoreo. Esta base no sustituye RF-25 a RF-29: aún faltan los tableros y alertas por tenant, latencia y errores de la aplicación de asistencia, estado de PostgreSQL y recepción de alertas en la plataforma.
+Prometheus, Grafana y un sondeador HTTP (blackbox) corren con Docker Compose en el **equipo del operador**, separados de los servidores de los tenants. El panel les da acceso a cada tenant sin abrir ningún puerto en AWS.
 
-## Stack local
-
-Docker Desktop debe estar iniciado. Completar `infrastructure/observability/.env` con una contraseña local de Grafana y ejecutar desde la raíz:
-
-```powershell
-Copy-Item infrastructure/observability/.env.example infrastructure/observability/.env
-# Completar GRAFANA_ADMIN_PASSWORD.
-docker compose --env-file infrastructure/observability/.env -f infrastructure/observability/compose.yaml config --quiet
-docker compose --env-file infrastructure/observability/.env -f infrastructure/observability/compose.yaml up -d
+```text
+ tenant (AWS)                         equipo del operador
+ ┌─────────────┐  túnel SSH (por el bastión)   ┌──────────────────────────────┐
+ │ frontend    │◄──────────────────────────────┤ panel (NestJS) mantiene 4     │
+ │ backend     │   node_exporter :9100         │ túneles por tenant            │
+ │ database    │   postgres_exporter :9187     │        │ puertos 191xx        │
+ └─────────────┘                               │ Prometheus ─► Grafana         │
+        ▲  GET /api/health (HTTPS)             │      ▲   │   tablero + alertas│
+        └──────────── blackbox ────────────────┤      │   └─webhook─► panel    │
+                                               └──────────────────────────────┘
 ```
 
-Grafana: `http://localhost:3002`, usuario `admin`. Prometheus: `http://localhost:9090`. La fuente y el tablero Control Center se provisionan desde archivos. Las reglas iniciales se evalúan en Prometheus; enviar alertas al panel y configurar notificaciones es tarea pendiente del integrante 6.
+## Qué mide
 
-Prometheus consulta `host.docker.internal:3000`. Si Docker no alcanza una API enlazada a loopback, definir `HOST=0.0.0.0` en el `.env` local del backend, reiniciarla y limitar el acceso con el firewall del equipo. Mantener `127.0.0.1` cuando no se use Docker. Ajustar el target si se cambia el puerto. Los puertos publicados por Compose solo se exponen en loopback.
+| Requisito | Origen |
+| --- | --- |
+| Disponibilidad (RF-26) | `up` del node_exporter de cada servidor y sonda HTTPS a `/api/health` |
+| CPU, memoria y disco | node_exporter de los 3 servidores (`node_cpu_*`, `node_memory_*`, `node_filesystem_*`) |
+| Latencia y errores del backend | sonda `probe_duration_seconds` y `probe_success` sobre `/api/health`, **y las peticiones reales de la aplicación** (ver abajo) |
+| Peticiones por segundo, latencia p95 por ruta, errores 5xx por ruta, códigos HTTP e inicios de sesión fallidos | exporter de Nginx en el frontend (`tcc_http_*`, `tcc_login_attempts_total`) |
+| Estado de PostgreSQL | postgres_exporter del servidor de base de datos (`pg_up`, conexiones activas) |
+| Por tenant y entorno (RF-27) | variables **Tenant** y **Entorno** del tablero; cada target lleva `tenant`, `environment`, `role` y `scope=tenant` |
 
-Detener con `docker compose --env-file infrastructure/observability/.env -f infrastructure/observability/compose.yaml down`. No agregar `--volumes` si se quiere conservar la información local.
+Los tableros y las alertas son código (se regeneran con `python infrastructure/observability/generar_grafana.py`): `grafana/dashboards/tenant-health.json` y `grafana/provisioning/alerting/alertas.yaml`. No se configura nada a mano en la interfaz.
 
-## Integración con los tenants
+## Métricas de la aplicación (peticiones reales)
 
-Las imágenes Packer incluyen `prometheus-node-exporter`, habilitado en el puerto 9100. Las de base de datos incluyen además el paquete `prometheus-postgres-exporter`, deshabilitado hasta que Ansible configure el usuario de monitoreo y la conexión privada. Nunca abrir esos puertos a todo Internet.
+Nginx del frontend recibe todas las llamadas a la API. El rol de Ansible del frontend registra una línea por petición con un formato mínimo (hora, método, ruta sin parámetros, código y duración; sin IP ni cabeceras) y un exporter de Python de la biblioteca estándar (`roles/frontend/files/tcc_nginx_exporter.py`) la convierte en métricas en `127.0.0.1:9102`:
 
-El integrante 5 registra y retira targets usando `scripts/update_monitoring_targets.py`; el integrante 6 establece la conectividad desde el recolector hacia los servidores. Prometheus en un portátil no alcanza automáticamente IPs privadas de VPC aisladas: se debe acordar una ubicación del recolector y rutas, reglas o túneles apropiados. El mismo usuario IAM no da conectividad de red.
+- `tcc_http_requests_total{route,method,status}`: peticiones por ruta (los identificadores se agrupan: `/api/students/:id`).
+- `tcc_http_request_duration_seconds`: histograma por ruta (latencia p95).
+- `tcc_http_errors_total{route}`: respuestas 5xx.
+- `tcc_login_attempts_total{result}`: inicios de sesión correctos y fallidos (400, 401 o 403 en `/api/auth/login`).
 
-Los targets usan etiquetas `tenant`, `environment`, `role` y `scope=tenant`. Los indicadores del panel usan `scope=control-center`. No mezclar ambos alcances ni presentar métricas del panel como métricas de instituciones.
+Si la instalación del exporter fallara, el tenant sigue operativo y solo faltan estas métricas. Solo los tenants creados o reconfigurados con esta versión las tienen.
 
-Imágenes fijadas: Prometheus 3.16.0 y Grafana OSS 13.3.1. Validación pendiente contra Docker en este entorno por falta de acceso al motor. Referencias: [Prometheus](https://prometheus.io/docs/instrumenting/exposition_formats/), [provisioning Grafana](https://grafana.com/docs/grafana/latest/administration/provisioning/).
+## Alertas (RF-28 y RF-29)
+
+Ocho reglas evaluadas cada minuto: servidor sin respuesta, API sin responder 200, PostgreSQL caído, más de 5 % de respuestas 5xx, más de 10 inicios de sesión fallidos en 5 minutos, y CPU, memoria o disco sobre el 85 %. Grafana entrega cada alerta (disparada y resuelta) al panel con `POST /api/monitoring/alerts`, autenticada con `WEBHOOK_TOKEN`. El panel la guarda en `tenant_alerts` con su tenant y la hora de detección y la muestra en **Monitoreo**.
+
+## Puesta en marcha
+
+1. Tener Docker Desktop abierto.
+2. Copiar `infrastructure/observability/.env.example` a `infrastructure/observability/.env` y completar `GRAFANA_ADMIN_PASSWORD` y `WEBHOOK_TOKEN` (el **mismo** valor que `WEBHOOK_TOKEN` en `apps/backend/.env`).
+3. Desde la raíz del monorepo:
+   ```powershell
+   docker compose --env-file infrastructure/observability/.env -f infrastructure/observability/compose.yaml up -d
+   ```
+4. Grafana: <http://localhost:3002> (usuario `admin` y la contraseña del `.env`); Prometheus: <http://localhost:9090>. Grafana abre en **Resumen de la plataforma** (tema oscuro): tarjetas, una fila por tenant, alertas activas y tráfico. El detalle de un tenant está en **Tenant Control Center → Salud por tenant**, que enlaza con la página **Logs** del panel.
+5. Con el panel en marcha y la demo local real habilitada, cada tenant `ACTIVE` abre solo sus túneles y aparece en el tablero. Al suspender o eliminar un tenant se cierran los túneles y desaparecen sus targets; al reanudar se vuelven a abrir con las direcciones nuevas.
+
+Detener: `docker compose --env-file infrastructure/observability/.env -f infrastructure/observability/compose.yaml down` (con `-v` también borra el historial).
+
+## Cómo se conectan los tenants
+
+Los servidores de cada tenant no son alcanzables desde fuera: el backend y la base de datos no tienen IP pública. El panel abre, por cada tenant, cinco túneles SSH con la llave local (`DEMO_SSH_PRIVATE_KEY_WSL_PATH`), pasando por el frontend como bastión:
+
+| Servidor | Destino remoto | Puerto local |
+| --- | --- | --- |
+| frontend | `127.0.0.1:9100` | base |
+| backend | `127.0.0.1:9100` | base + 1 |
+| database | `127.0.0.1:9100` | base + 2 |
+| database (PostgreSQL) | `127.0.0.1:9187` | base + 3 |
+| frontend (peticiones de la aplicación) | `127.0.0.1:9102` | base + 4 |
+
+El bloque de puertos (desde 19100, de 10 en 10) se asigna una vez por tenant y se guarda en la base. Prometheus los alcanza como `host.docker.internal:<puerto>`. Los archivos de targets los escribe el panel en `prometheus/targets*/tenant-<id>.json` (Git los ignora). Si un túnel se cae se reintenta con espera creciente; **Monitoreo** muestra su estado.
+
+## Logs
+
+Grafana muestra métricas, no texto de logs. Los logs de cada servidor (frontend, backend y base de datos) se leen en la página **Logs** del panel (`/logs`), por SSH y sin agentes, y se enlazan desde los tableros. No se integró un agregador como Loki.
+
+Con los accesos del frontend (`access.log` y el log de métricas) y el registro de accesos de Gunicorn, un inicio de sesión rechazado se ve a la vez en el contador de Grafana y en *Logs → Nginx (accesos)*.
+
+## Variables
+
+- `apps/backend/.env`: `WEBHOOK_TOKEN`, `GRAFANA_PORT` (3002 por defecto) y, opcionalmente, `MONITORING_TUNNELS=false` para no abrir túneles.
+- `infrastructure/observability/.env`: `GRAFANA_ADMIN_USER`, `GRAFANA_ADMIN_PASSWORD`, `WEBHOOK_TOKEN`, `CONTROL_CENTER_URL`.
+
+## Límites
+
+- Verificado con un tenant real de CloudFormation: 6 targets UP (3 servidores, PostgreSQL, exporter de Nginx y la comprobación HTTP).
+- Solo funciona mientras el panel y los túneles estén en el equipo del operador; no hay monitoreo si ese equipo está apagado.
+- No hay métricas internas de la aplicación de asistencia (memoria del proceso, consultas): las de peticiones salen del registro de Nginx.
+- Las alertas de errores 5xx y de inicios de sesión dependen de que el exporter esté instalado en el frontend.
+- Las alertas de una suspensión no se silencian solas: un tenant suspendido no tiene túneles ni targets, así que no genera alertas de servidor caído.
+- No se persiste el historial de Grafana fuera del volumen de Docker.

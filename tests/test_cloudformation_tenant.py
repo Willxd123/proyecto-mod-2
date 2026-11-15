@@ -1,5 +1,6 @@
 import copy
 import json
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -150,14 +151,19 @@ class CloudFormationTenantTests(unittest.TestCase):
         wsl = shutil.which('wsl.exe') if sys.platform == 'win32' else None
         if not executable and not wsl:
             self.skipTest('Ansible no está disponible.')
+        # En Windows se usa la distribución de WSL con Ansible (WSL_DISTRO); si no la tiene, la prueba se omite.
+        distro = os.environ.get('WSL_DISTRO', '').strip()
+        wsl_command = [wsl] + (['-d', distro] if distro else []) if wsl else []
+        if wsl and subprocess.run(wsl_command + ['--exec', 'which', 'ansible-inventory'], capture_output=True).returncode != 0:
+            self.skipTest('ansible-inventory no está disponible en la distribución de WSL (defina WSL_DISTRO).')
         result = {'nodes': {'frontend': {'public_ip': '8.8.8.8', 'private_ip': '10.42.1.2'},
                             'backend': {'private_ip': '10.42.2.3'},
                             'database': {'private_ip': '10.42.2.4'}}}
         path = self.root / 'hosts.yml'
         path.write_text(json.dumps(engine.inventory(self.request, result, '/tmp/test key.pem')), encoding='utf-8')
         if wsl:
-            wsl_path = subprocess.check_output([wsl, '--exec', 'wslpath', '-a', str(path)], text=True).strip()
-            command = [wsl, '--exec', 'ansible-inventory', '-i', wsl_path, '--list']
+            wsl_path = subprocess.check_output(wsl_command + ['--exec', 'wslpath', '-a', str(path)], text=True).strip()
+            command = wsl_command + ['--exec', 'ansible-inventory', '-i', wsl_path, '--list']
         else:
             command = [executable, '-i', str(path), '--list']
         completed = subprocess.run(command, capture_output=True, text=True, check=True)

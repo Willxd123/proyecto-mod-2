@@ -1,6 +1,6 @@
 import { inject, Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import type { ApiList, AssistanceArtifactInspection, AssistanceArtifactJob, CreationReadiness, DemoProvisioningCapabilities, DemoProvisioningOperation, GoldenImage, Plan, SecurityScanResult, TenantDraftCreated, TenantDraftInput, TenantSummary, TenantTfvarsGenerated, TenantValidationResult } from '@modulo2/contracts';
+import type { LogSource, TenantLogs, MonitoringStatus, TenantAlertRecord, ApiList, AuditList, AuditEventRecord, LifecycleAction, LifecycleOperation, TenantLifecycleInfo, AssistanceArtifactInspection, AssistanceArtifactJob, CreationReadiness, DemoProvisioningCapabilities, DemoProvisioningOperation, GoldenImage, Plan, SecurityScanResult, TenantDraftCreated, TenantDraftInput, TenantSummary, TenantTfvarsGenerated, TenantValidationResult } from '@modulo2/contracts';
 
 @Injectable({ providedIn: 'root' })
 export class ApiService {
@@ -27,6 +27,29 @@ export class ApiService {
     return this.http.post<{ data: { email: string; password: string } }>(`/api/demo-credentials/${encodeURIComponent(slug)}/reveal`,
       { confirm: slug }, { headers: { 'X-Requested-With': 'TenantControlCenter' } });
   }
+  audit(filters: { tenant?: string; action?: string; status?: string; limit?: number; offset?: number }) {
+    const params = Object.fromEntries(Object.entries(filters).filter(([, value]) => value !== '' && value !== undefined)) as Record<string, string | number>;
+    return this.http.get<AuditList>('/api/audit', { params });
+  }
+  auditOperation(id: string) { return this.http.get<{ data: AuditEventRecord[] }>(`/api/audit/operations/${encodeURIComponent(id)}`); }
+  lifecycleInfo(slug: string) { return this.http.get<{ data: TenantLifecycleInfo }>(`/api/tenants/${encodeURIComponent(slug)}/lifecycle`); }
+  lifecycleOperation(slug: string) { return this.http.get<{ data: LifecycleOperation | null }>(`/api/tenants/${encodeURIComponent(slug)}/lifecycle/operation`); }
+  lifecycleAction(action: LifecycleAction, slug: string) {
+    return this.http.post<{ data: LifecycleOperation }>(`/api/tenants/${encodeURIComponent(slug)}/${action}`, { confirm: slug }, { headers: { 'X-Requested-With': 'TenantControlCenter' } });
+  }
+  logSources() { return this.http.get<{ data: { enabled: boolean; sources: LogSource[] } }>('/api/tenants/logs/sources'); }
+  tenantLogs(slug: string, source: string, lines: number, initial: boolean) {
+    return this.http.get<{ data: TenantLogs }>(`/api/tenants/${encodeURIComponent(slug)}/logs`, { params: { source, lines, initial } });
+  }
+  monitoringStatus() { return this.http.get<{ data: MonitoringStatus }>('/api/monitoring/status'); }
+  monitoringAlerts(filters: { tenant?: string; status?: string; limit?: number }) {
+    const params = Object.fromEntries(Object.entries(filters).filter(([, value]) => value !== '' && value !== undefined)) as Record<string, string | number>;
+    return this.http.get<{ data: TenantAlertRecord[] }>('/api/monitoring/alerts', { params });
+  }
+  restoreBackup(slug: string, backupId: string) {
+    return this.http.post<{ data: LifecycleOperation }>(`/api/tenants/${encodeURIComponent(slug)}/restore`, { confirm: slug, backup_id: backupId }, { headers: { 'X-Requested-With': 'TenantControlCenter' } });
+  }
+  renameTenant(slug: string, name: string) { return this.http.patch<{ data: { slug: string; name: string } }>(`/api/tenants/${encodeURIComponent(slug)}`, { name }); }
   inspectArtifacts() { return this.http.get<{ data: AssistanceArtifactInspection }>('/api/assistance-artifacts/inspect', { headers: { 'X-Requested-With': 'TenantControlCenter' } }); }
   artifactStatus() { return this.http.get<{ data: AssistanceArtifactJob }>('/api/assistance-artifacts/status', { headers: { 'X-Requested-With': 'TenantControlCenter' } }); }
   prepareArtifacts(revisions: AssistanceArtifactInspection['revisions']) {

@@ -103,6 +103,11 @@ dashboard = {
     'uid': 'tenant-health', 'title': 'Salud por tenant', 'tags': ['tenant-control-center'], 'timezone': 'browser', 'schemaVersion': 39, 'version': 1,
     'refresh': '15s', 'time': {'from': 'now-1h', 'to': 'now'}, 'editable': False, 'graphTooltip': 1,
     'description': 'RF-25 a RF-27: disponibilidad, CPU, memoria, disco, latencia, errores y PostgreSQL por tenant y entorno.',
+    'links': [
+        {'title': 'Resumen de la plataforma', 'type': 'link', 'url': '/d/plataforma', 'icon': 'apps', 'targetBlank': False},
+        {'title': 'Logs de este tenant (panel)', 'type': 'link', 'url': 'http://localhost:4200/logs?tenant=${tenant:raw}', 'icon': 'doc', 'targetBlank': True},
+        {'title': 'Panel: monitoreo y alertas', 'type': 'link', 'url': 'http://localhost:4200/monitoreo', 'icon': 'bolt', 'targetBlank': True},
+    ],
     'templating': {'list': variables}, 'annotations': {'list': []}, 'panels': paneles,
 }
 with open(os.path.join(base, 'dashboards', 'tenant-health.json'), 'w', encoding='utf-8', newline='\n') as f:
@@ -185,3 +190,7 @@ for r in reglas:
 with open(os.path.join(base, 'provisioning', 'alerting', 'alertas.yaml'), 'w', encoding='utf-8', newline='\n') as f:
     f.write(alertas)
 print('ok', len(paneles), 'paneles', len(reglas), 'reglas')
+
+
+# Tablero de inicio: resumen de toda la plataforma (usa los mismos ayudantes definidos arriba).
+exec(compile(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'generar_resumen.py'), encoding='utf-8').read(), 'generar_resumen.py', 'exec'))

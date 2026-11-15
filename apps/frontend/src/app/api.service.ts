@@ -1,6 +1,6 @@
 import { inject, Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import type { MonitoringStatus, TenantAlertRecord, ApiList, AuditList, AuditEventRecord, LifecycleAction, LifecycleOperation, TenantLifecycleInfo, AssistanceArtifactInspection, AssistanceArtifactJob, CreationReadiness, DemoProvisioningCapabilities, DemoProvisioningOperation, GoldenImage, Plan, SecurityScanResult, TenantDraftCreated, TenantDraftInput, TenantSummary, TenantTfvarsGenerated, TenantValidationResult } from '@modulo2/contracts';
+import type { LogSource, TenantLogs, MonitoringStatus, TenantAlertRecord, ApiList, AuditList, AuditEventRecord, LifecycleAction, LifecycleOperation, TenantLifecycleInfo, AssistanceArtifactInspection, AssistanceArtifactJob, CreationReadiness, DemoProvisioningCapabilities, DemoProvisioningOperation, GoldenImage, Plan, SecurityScanResult, TenantDraftCreated, TenantDraftInput, TenantSummary, TenantTfvarsGenerated, TenantValidationResult } from '@modulo2/contracts';
 
 @Injectable({ providedIn: 'root' })
 export class ApiService {
@@ -36,6 +36,10 @@ export class ApiService {
   lifecycleOperation(slug: string) { return this.http.get<{ data: LifecycleOperation | null }>(`/api/tenants/${encodeURIComponent(slug)}/lifecycle/operation`); }
   lifecycleAction(action: LifecycleAction, slug: string) {
     return this.http.post<{ data: LifecycleOperation }>(`/api/tenants/${encodeURIComponent(slug)}/${action}`, { confirm: slug }, { headers: { 'X-Requested-With': 'TenantControlCenter' } });
+  }
+  logSources() { return this.http.get<{ data: { enabled: boolean; sources: LogSource[] } }>('/api/tenants/logs/sources'); }
+  tenantLogs(slug: string, source: string, lines: number, initial: boolean) {
+    return this.http.get<{ data: TenantLogs }>(`/api/tenants/${encodeURIComponent(slug)}/logs`, { params: { source, lines, initial } });
   }
   monitoringStatus() { return this.http.get<{ data: MonitoringStatus }>('/api/monitoring/status'); }
   monitoringAlerts(filters: { tenant?: string; status?: string; limit?: number }) {

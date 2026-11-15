@@ -21,7 +21,7 @@ type Filter = 'all' | 'steps' | 'problems';
     <div #scroller class="log-body" role="log" aria-live="polite" aria-label="Registro de la operación">
       @for (line of shown(); track $index) {
         <div class="row" [class.err]="kind(line) === 'err'" [class.warn]="kind(line) === 'warn'" [class.ok]="kind(line) === 'ok'" [class.task]="kind(line) === 'task'" [class.dim]="kind(line) === 'dim'">
-          <span class="time">{{ time(line.occurred_at) }}</span><span class="stage">{{ line.stage ?? line.status }}</span><span class="msg">{{ line.message }}</span>
+          @if (showTime()) { <span class="time">{{ time(line.occurred_at) }}</span> }@if (showStage()) { <span class="stage">{{ line.stage ?? line.status }}</span> }<span class="msg">{{ line.message }}</span>
         </div>
       } @empty { <div class="row dim">{{ lines().length ? 'Ninguna línea coincide con el filtro.' : 'Esperando eventos…' }}</div> }
       @if (running()) { <div class="row dim"><span class="time"></span><span class="stage">···</span><span class="msg">en curso; no cierres el panel</span></div> }
@@ -47,6 +47,8 @@ type Filter = 'all' | 'steps' | 'problems';
 export class LogConsoleComponent implements AfterViewChecked {
   readonly lines = input.required<LogLine[]>();
   readonly running = input(false);
+  readonly showTime = input(true);
+  readonly showStage = input(true);
   readonly name = input('operacion');
   readonly filter = signal<Filter>('all');
   readonly follow = signal(true);
@@ -63,8 +65,8 @@ export class LogConsoleComponent implements AfterViewChecked {
   /** Clasifica una línea para colorearla: error, aviso, éxito, paso principal o detalle secundario. */
   kind(line: LogLine): 'err' | 'warn' | 'ok' | 'task' | 'dim' | 'plain' {
     const text = line.message;
-    if (line.status === 'FAILED' || /✖|ERROR|FAILED|falló|fatal/i.test(text)) return 'err';
-    if (/^Advertencia|advertencia/.test(text)) return 'warn';
+    if (line.status === 'FAILED' || /✖|ERROR|FAILED|falló|fatal|CRITICAL|Traceback|\" 5\d\d |\b5\d\d\b \d+ \"/i.test(text)) return 'err';
+    if (/^Advertencia|advertencia|WARN(ING)?\b| 4\d\d /i.test(text)) return 'warn';
     if (line.status === 'SUCCEEDED' || /Creation complete|Apply complete|CREATE_COMPLETE|verificad|completad/i.test(text)) return 'ok';
     if (/^Ansible · (play|tarea)|^Terraform ·|^Pulumi ·|^CloudFormation ·/.test(text)) return 'task';
     if (text.startsWith('  ↳') || text.startsWith('  ')) return 'dim';

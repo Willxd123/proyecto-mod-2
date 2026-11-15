@@ -6,7 +6,7 @@ import { ApiService } from '../api.service';
 const ACTIONS: Record<string, string> = {
   LOGIN: 'Inicio de sesión', DRAFT_CREATE: 'Borrador de tenant', SECURITY_SCAN: 'Escaneo de seguridad', CREATE: 'Creación de tenant',
   SUSPEND: 'Suspensión', RESUME: 'Reanudación', BACKUP: 'Respaldo', RESTORE: 'Restauración', DELETE: 'Eliminación', RENAME: 'Cambio de nombre',
-  CREDENTIALS_REVEAL: 'Consulta de credenciales', MONITORING_TARGETS: 'Targets de monitoreo',
+  CREDENTIALS_REVEAL: 'Consulta de credenciales', MONITORING_TARGETS: 'Targets de monitoreo', LOGS_VIEW: 'Consulta de logs',
 };
 const STATUSES = ['STARTED', 'RUNNING', 'SUCCEEDED', 'FAILED', 'DENIED', 'INFO'];
 const PAGE = 25;

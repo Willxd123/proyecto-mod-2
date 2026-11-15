@@ -27,6 +27,8 @@ import { AuthService } from './auth/auth.service';
 import { LifecycleController } from './lifecycle/lifecycle.controller';
 import { LifecycleService } from './lifecycle/lifecycle.service';
 import { MonitoringTargetsService } from './lifecycle/monitoring-targets.service';
+import { LogsController } from './logs/logs.controller';
+import { LogsService } from './logs/logs.service';
 import { MonitoringController } from './monitoring/monitoring.controller';
 import { MonitoringService } from './monitoring/monitoring.service';
 import { TunnelsService } from './monitoring/tunnels.service';
@@ -43,8 +45,8 @@ class SystemController {
 
 @Module({
   imports: [TypeOrmModule.forRoot(databaseOptions()), TypeOrmModule.forFeature([CatalogPlan, GoldenImageRecord, Tenant, AuditEvent, TenantBackup, TenantAlert])],
-  controllers: [SystemController, CatalogController, ImagesController, TenantsController, ArtifactsController, SecurityController, DemoCredentialsController, DemoProvisioningController, AuthController, AuditController, LifecycleController, MonitoringController],
+  controllers: [SystemController, CatalogController, ImagesController, TenantsController, ArtifactsController, SecurityController, DemoCredentialsController, DemoProvisioningController, AuthController, AuditController, LifecycleController, MonitoringController, LogsController],
   providers: [CatalogService, ImagesService, TenantsService, ArtifactsService, SecurityService, DemoCredentialsService, DemoProvisioningService,
-    AuditService, AuthService, LifecycleService, MonitoringTargetsService, MonitoringService, TunnelsService, { provide: APP_GUARD, useClass: AuthGuard }],
+    AuditService, AuthService, LifecycleService, MonitoringTargetsService, MonitoringService, TunnelsService, LogsService, { provide: APP_GUARD, useClass: AuthGuard }],
 })
 export class AppModule {}

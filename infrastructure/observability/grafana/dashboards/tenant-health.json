@@ -15,6 +15,29 @@
   "editable": false,
   "graphTooltip": 1,
   "description": "RF-25 a RF-27: disponibilidad, CPU, memoria, disco, latencia, errores y PostgreSQL por tenant y entorno.",
+  "links": [
+    {
+      "title": "Resumen de la plataforma",
+      "type": "link",
+      "url": "/d/plataforma",
+      "icon": "apps",
+      "targetBlank": false
+    },
+    {
+      "title": "Logs de este tenant (panel)",
+      "type": "link",
+      "url": "http://localhost:4200/logs?tenant=${tenant:raw}",
+      "icon": "doc",
+      "targetBlank": true
+    },
+    {
+      "title": "Panel: monitoreo y alertas",
+      "type": "link",
+      "url": "http://localhost:4200/monitoreo",
+      "icon": "bolt",
+      "targetBlank": true
+    }
+  ],
   "templating": {
     "list": [
       {

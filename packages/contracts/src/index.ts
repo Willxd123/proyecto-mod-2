@@ -85,8 +85,10 @@ export interface SecurityScanResult {
 
 /** Integración 5: ciclo de vida y auditoría (RF-14 a RF-18, RF-20). */
 export type LifecycleAction = 'suspend' | 'resume' | 'delete' | 'backup' | 'restore';
+export interface LogSource { id: string; label: string; role: ServerRole; description: string; }
+export interface TenantLogs { tenant_slug: string; source: string; label: string; fetched_at: string; lines: string[]; truncated: boolean; }
 export type AuditAction = 'LOGIN' | 'DRAFT_CREATE' | 'SECURITY_SCAN' | 'CREATE' | 'SUSPEND' | 'RESUME' | 'DELETE' | 'BACKUP' | 'RESTORE' | 'RENAME'
-  | 'CREDENTIALS_REVEAL' | 'MONITORING_TARGETS';
+  | 'CREDENTIALS_REVEAL' | 'MONITORING_TARGETS' | 'LOGS_VIEW';
 export type AuditStatus = 'STARTED' | 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'DENIED' | 'INFO';
 export interface AuditEventRecord {
   id: string; occurred_at: string; actor: string; action: AuditAction; status: AuditStatus; tenant_slug: string | null;

@@ -1,3 +1,4 @@
+import { LogConsoleComponent } from './log-console.component';
 import { Component, computed, inject, OnDestroy, signal } from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { forkJoin } from 'rxjs';
@@ -13,7 +14,7 @@ const ENGINES: { id: IaCEngine; label: string }[] = [
 ];
 
 @Component({
-  imports: [RouterLink],
+  imports: [RouterLink, LogConsoleComponent],
   template: `
     <section class="view">
       <div class="view-head">
@@ -167,10 +168,8 @@ const ENGINES: { id: IaCEngine; label: string }[] = [
                     <div class="muted">Requisitos pendientes: {{ demoCapabilities().missing.join(', ') || 'no se pudo verificar la configuración local' }}.</div>
                   }
                   @if (demoOperation(); as operation) {
-                    @for (event of operation.events; track event.occurred_at) {
-                      <div>[{{ event.status }} · {{ event.stage }}] {{ event.message }}</div>
-                    }
-                    @if (operation.status === 'RUNNING') { <div role="status">Etapa actual: {{ operation.stage }}. No cierres el panel.</div> }
+                    <app-log-console [lines]="operation.events" [running]="operation.status === 'RUNNING'" [name]="operation.tenant_slug" />
+                    @if (operation.status === 'RUNNING') { <div role="status">Etapa actual: {{ operation.stage }}.</div> }
                     @if (operation.error) { <div class="field-error" role="alert">{{ operation.error }}</div> }
                     @if (operation.status === 'SUCCEEDED' && operation.access_url) {
                       <div class="notice ok" role="status">Login inicial verificado. <a class="link" [href]="operation.access_url" target="_blank" rel="noopener">Abrir asistencia →</a></div>

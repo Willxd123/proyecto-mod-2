@@ -24,6 +24,8 @@ from security_scan import ROOT, scan_handoff
 PROGRAM = ROOT / 'infrastructure' / 'pulumi'
 STATE = ROOT / 'output' / 'pulumi-state'
 PROJECT = 'tenant-control-center'
+# El worker de demostración lo define para mostrar en vivo los recursos que Pulumi crea o elimina.
+LINE_SINK = None
 
 
 def pulumi_binary():
@@ -70,6 +72,15 @@ def pulumi(arguments, env, capture=True, timeout=3600):
     binary = pulumi_binary()
     if not binary:
         raise ValueError('No se encontró el CLI de Pulumi en el PATH ni en ~/.pulumi/bin.')
+    if LINE_SINK and arguments[0] in ('up', 'destroy'):
+        import live_log
+        try:
+            code = live_log.stream([binary, *arguments, '--non-interactive'], live_log.PulumiProgress(LINE_SINK), cwd=PROGRAM, env=env, timeout=timeout)
+        except OSError as error:
+            raise RuntimeError('No se pudo ejecutar Pulumi.') from error
+        if code:
+            raise RuntimeError(f'Pulumi {arguments[0]} falló (código {code}); revise el estado privado del tenant.')
+        return ''
     try:
         done = subprocess.run([binary, *arguments, '--non-interactive'], cwd=PROGRAM, env=env, text=True,
                               capture_output=capture, timeout=timeout, check=False)

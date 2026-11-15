@@ -138,7 +138,7 @@ class DemoWorkerTests(unittest.TestCase):
         staged = ['/home/user/demo/inventory.yml', variables, '/home/user/demo/vault', '/home/user/demo/key']
         with patch.object(demo_worker, 'Path', PureWindowsPath), \
                 patch.object(demo_worker, 'wsl_path', return_value='/mnt/repo'), \
-                patch.object(demo_worker, 'run_silent') as run, \
+                patch.object(demo_worker.live_log, 'stream', return_value=0) as run, \
                 patch.object(demo_worker, 'wsl', return_value=b'{"verified":true}'):
             demo_worker.configure_and_verify('i3-fixture', {}, {}, staged)
         command = run.call_args.args[0]
@@ -147,12 +147,12 @@ class DemoWorkerTests(unittest.TestCase):
     def test_https_verifier_accepts_json_output_and_rejects_unverified_results(self):
         staged = ['/home/user/inventory', '/home/user/variables', '/home/user/vault', '/home/user/key']
         with patch.object(demo_worker, 'wsl_path', return_value='/mnt/repo'), \
-                patch.object(demo_worker, 'run_silent'), \
+                patch.object(demo_worker.live_log, 'stream', return_value=0), \
                 patch.object(demo_worker, 'wsl', return_value=b'{"verified": true}\n'):
             demo_worker.configure_and_verify('i3-fixture', {}, {}, staged)
         for output in (b'{"verified": false}', b'{"verified": 1}', b'{"verified": true, "extra": 1}', b'invalid'):
             with self.subTest(output=output), patch.object(demo_worker, 'wsl_path', return_value='/mnt/repo'), \
-                    patch.object(demo_worker, 'run_silent'), patch.object(demo_worker, 'wsl', return_value=output):
+                    patch.object(demo_worker.live_log, 'stream', return_value=0), patch.object(demo_worker, 'wsl', return_value=output):
                 with self.assertRaises(demo_worker.DemoError):
                     demo_worker.configure_and_verify('i3-fixture', {}, {}, staged)
 

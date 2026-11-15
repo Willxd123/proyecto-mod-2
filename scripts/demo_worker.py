@@ -10,8 +10,10 @@ import re
 import shutil
 import subprocess
 import sys
+import threading
 import time
 
+import live_log
 from cloudformation_tenant import HANDOFF, ROLES, main as cloudformation_main
 from prepare_handoff import prepare
 from render_cloud_init import render
@@ -31,8 +33,15 @@ class DemoError(Exception):
     pass
 
 
+_STDOUT = sys.stdout
+_EMIT_LOCK = threading.Lock()
+
+
 def emit(stage, message, status='running'):
-    print(json.dumps({'stage': stage, 'message': message, 'status': status}), flush=True)
+    """Un evento por línea hacia el panel. Usa el stdout original (los motores lo redirigen) y es seguro entre hilos."""
+    with _EMIT_LOCK:
+        _STDOUT.write(json.dumps({'stage': stage, 'message': message, 'status': status}) + '\n')
+        _STDOUT.flush()
 
 
 def run_silent(arguments, timeout=60, input_data=None):
@@ -339,10 +348,15 @@ def execute_engine(request, settings):
         with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
             if cloudformation_main(['validate', *base]) != 0:
                 raise DemoError('El preflight de CloudFormation falló; no se creó el stack.')
-        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
-            args = ['create', *base, '--ssh-private-key-path', settings['private_key_wsl'], '--enable-https']
-            if cloudformation_main(args) != 0:
-                raise DemoError('CloudFormation no completó la creación; revisar el estado y la salida privada.')
+        watcher = live_log.StackEvents(lambda text: emit('provision', text), request['region'], 'i3-' + slug)
+        watcher.start()
+        try:
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                args = ['create', *base, '--ssh-private-key-path', settings['private_key_wsl'], '--enable-https']
+                if cloudformation_main(args) != 0:
+                    raise DemoError('CloudFormation no completó la creación; revisar el estado y la salida privada.')
+        finally:
+            watcher.stop()
         output = HANDOFF / slug / 'cloudformation'
         return json.loads((output / 'provisioning-result.json').read_text(encoding='utf-8')), output / 'hosts.yml'
 
@@ -351,9 +365,13 @@ def execute_engine(request, settings):
         with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
             if pulumi_tenant.main(['validate', *base]) != 0:
                 raise DemoError('La vista previa de Pulumi falló; no se creó el stack.')
-        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
-            if pulumi_tenant.main(['create', *base, '--ssh-private-key-path', settings['private_key_wsl'], '--enable-https']) != 0:
-                raise DemoError('Pulumi no completó la creación; revisar el estado privado del tenant.')
+        pulumi_tenant.LINE_SINK = lambda text: emit('provision', text)
+        try:
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                if pulumi_tenant.main(['create', *base, '--ssh-private-key-path', settings['private_key_wsl'], '--enable-https']) != 0:
+                    raise DemoError('Pulumi no completó la creación; revisar el estado privado del tenant.')
+        finally:
+            pulumi_tenant.LINE_SINK = None
         output = HANDOFF / slug / 'pulumi'
         return json.loads((output / 'provisioning-result.json').read_text(encoding='utf-8')), output / 'hosts.yml'
 
@@ -363,6 +381,16 @@ def execute_engine(request, settings):
               '--ssh-private-key-path', settings['private_key_wsl'], '--verify-handoff', '--enable-frontend-https']
     original_run = terraform_tenant.run
     def quiet_run(command, cwd, env, capture=False):
+        if not capture:
+            # Sin salida capturada: se muestra cada recurso que el motor crea o destruye, sin reenviar la salida cruda.
+            progress = live_log.TerraformProgress(lambda text: emit('provision', text))
+            try:
+                code = live_log.stream(command, progress, cwd=cwd, env=env, timeout=3600)
+            except OSError as error:
+                raise RuntimeError('No se pudo ejecutar el motor IaC.') from error
+            if code:
+                raise RuntimeError('El motor IaC devolvió un error; no se expondrán logs sin redactar.')
+            return ''
         try:
             completed = subprocess.run(command, cwd=cwd, env=env, check=False, text=True,
                                        stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -421,7 +449,14 @@ def configure_and_verify(slug, request, result, staged):
         'ansible-playbook', '-i', inventory, playbook,
         '--vault-password-file', password_file, '-e', '@' + variables, '-e', '@' + vault,
     ]
-    run_silent(command, timeout=5400)
+    # Se muestra cada play y tarea de Ansible (sin la salida cruda) mientras se configura el tenant.
+    progress = live_log.AnsibleProgress(lambda text: emit('configure', text))
+    try:
+        code = live_log.stream(command, progress, timeout=5400)
+    except OSError as error:
+        raise DemoError('Falló una comprobación requerida; revise la configuración local y el estado del tenant.') from error
+    if code:
+        raise DemoError('Falló una comprobación requerida; revise la configuración local y el estado del tenant.')
     verify = wsl(['--cd', wsl_path(ROOT), '--exec', 'python3', 'scripts/verify_demo_login.py', '--tenant', slug],
                  timeout=600)
     try:

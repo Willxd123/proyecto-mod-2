@@ -20,6 +20,8 @@ import { MonitoringTargetsService } from '../lifecycle/monitoring-targets.servic
 type WorkerEvent = { stage: string; message: string; status: 'running' | 'succeeded' | 'failed' };
 
 const ENGINES = ['terraform', 'opentofu', 'pulumi', 'cloudformation'] as const;
+/** El registro en vivo guarda hasta MAX_EVENTS líneas por operación (el resto sigue en la auditoría). */
+const MAX_EVENTS = 600;
 const WORKER_STAGES = new Set(['prepare', 'scan', 'preflight', 'provision', 'configure', 'verify', 'complete', 'failed', 'result']);
 
 @Injectable()
@@ -138,7 +140,7 @@ export class DemoProvisioningService {
         || operation.tenant_slug !== slug || !/^[0-9a-f-]{36}$/.test(operation.operation_id)
         || !['QUEUED', 'RUNNING', 'SUCCEEDED', 'FAILED'].includes(operation.status)
         || typeof operation.stage !== 'string' || !/^[a-z_-]{1,40}$/.test(operation.stage)
-        || !Array.isArray(operation.events) || operation.events.length > 40
+        || !Array.isArray(operation.events) || operation.events.length > MAX_EVENTS
         || (operation.error !== null && (typeof operation.error !== 'string' || operation.error.length > 240
           || /[\u0000-\u001f]/.test(operation.error)))) return null;
     if (operation.result !== null && !this.validResult(operation.result, slug)) return null;
@@ -234,7 +236,7 @@ export class DemoProvisioningService {
         operation.stage = event.stage;
         operation.events.push(this.event(operation, event.stage, event.message,
           event.status === 'failed' ? 'FAILED' : event.status === 'succeeded' ? 'SUCCEEDED' : 'RUNNING'));
-        if (operation.events.length > 40) operation.events.splice(0, operation.events.length - 40);
+        if (operation.events.length > MAX_EVENTS) operation.events.splice(0, operation.events.length - MAX_EVENTS);
         if (event.status !== 'failed') this.audited(operation, 'RUNNING', event.stage, event.message);
         if (event.status === 'failed') fail(event.message);
       } catch {
@@ -418,7 +420,7 @@ export class DemoProvisioningService {
     if (success) operation.events.push(this.event(operation, 'complete', 'Tenant configurado y login HTTPS verificado.', 'SUCCEEDED'));
     else operation.events.push(this.event(operation, 'failed', message, 'FAILED'));
     this.audited(operation, success ? 'SUCCEEDED' : 'FAILED', success ? 'complete' : 'failed', success ? 'Tenant configurado y login HTTPS verificado.' : message);
-    if (operation.events.length > 40) operation.events.splice(0, operation.events.length - 40);
+    if (operation.events.length > MAX_EVENTS) operation.events.splice(0, operation.events.length - MAX_EVENTS);
     try {
       const resources = {
         ...tenant.resources, demo_operation: operation,

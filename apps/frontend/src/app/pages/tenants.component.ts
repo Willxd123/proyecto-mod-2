@@ -5,13 +5,14 @@ import { RouterLink } from '@angular/router';
 import { interval } from 'rxjs';
 import type { LifecycleAction, LifecycleOperation, TenantLifecycleInfo, TenantSummary } from '@modulo2/contracts';
 import { ApiService } from '../api.service';
+import { LogConsoleComponent } from './log-console.component';
 
 type Dialog = { kind: LifecycleAction | 'rename' | 'log' | 'create'; slug: string } | null;
 const BUSY = ['PROVISIONING', 'SUSPENDING', 'RESUMING', 'BACKING_UP', 'RESTORING', 'DELETING'];
 const TITLES: Record<string, string> = { create: 'Iniciar aprovisionamiento', backup: 'Respaldar tenant', restore: 'Restaurar tenant', suspend: 'Suspender tenant', resume: 'Reanudar tenant', delete: 'Eliminar tenant', rename: 'Actualizar nombre', log: 'Operación del tenant' };
 
 @Component({
-  imports: [RouterLink, FormsModule],
+  imports: [RouterLink, FormsModule, LogConsoleComponent],
   template: `
     <section class="view">
       <div class="view-head">
@@ -133,9 +134,7 @@ const TITLES: Record<string, string> = { create: 'Iniciar aprovisionamiento', ba
             @if (operation(); as op) {
               <p><span class="pill plain" [class.ok]="op.status === 'SUCCEEDED'" [class.err]="op.status === 'FAILED'" [class.warn]="op.status === 'RUNNING'">{{ op.status }}</span>
                 {{ op.action }} · iniciada por <strong>{{ op.actor }}</strong> {{ op.simulated ? '(simulada)' : '' }}</p>
-              <ol class="events">@for (event of op.events; track event.id) {
-                <li [class.bad]="event.status === 'FAILED'"><span class="mono">{{ time(event.occurred_at) }}</span> <span class="tag">{{ event.stage ?? event.status }}</span> {{ event.message }}</li>
-              }</ol>
+              <app-log-console [lines]="op.events" [running]="op.status === 'RUNNING'" [name]="op.tenant_slug + '-' + op.action" />
               @if (op.error) { <div class="notice err" role="alert">{{ op.error }}</div> }
             } @else { <div class="notice info">Sin operaciones registradas para este tenant.</div> }
             <div class="modal-actions"><button class="btn" (click)="close()">Cerrar</button></div>
@@ -153,7 +152,7 @@ const TITLES: Record<string, string> = { create: 'Iniciar aprovisionamiento', ba
     .btn.danger{color:var(--err);border-color:var(--err-line)}
     .btn.danger:hover:not(:disabled){background:var(--err-bg)}
     .modal-back{position:fixed;inset:0;background:rgb(15 23 42/.55);display:grid;place-items:center;z-index:50}
-    .modal{background:#fff;border-radius:12px;width:min(620px,92vw);max-height:88vh;overflow:auto;padding:22px;display:flex;flex-direction:column;gap:12px}
+    .modal{background:#fff;border-radius:12px;width:min(820px,94vw);max-height:88vh;overflow:auto;padding:22px;display:flex;flex-direction:column;gap:12px}
     .modal h2{font-size:16px}
     .modal .lbl{font-size:12px;font-weight:600;color:var(--muted)}
     .modal .text{padding:9px 10px;border:1px solid var(--border-strong);border-radius:8px}

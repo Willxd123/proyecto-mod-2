@@ -27,7 +27,7 @@ const LIFECYCLE_AUDIT: AuditAction[] = ['SUSPEND', 'RESUME', 'DELETE', 'BACKUP',
 /** La consulta de operación también muestra la creación del tenant. */
 const OPERATION_AUDIT: AuditAction[] = [...LIFECYCLE_AUDIT, 'CREATE'];
 const ENGINES = ['terraform', 'opentofu', 'pulumi', 'cloudformation'];
-const WORKER_STAGES = new Set(['preflight', 'suspend', 'resume', 'destroy', 'backup', 'restore', 'verify', 'complete', 'failed', 'result']);
+const WORKER_STAGES = new Set(['preflight', 'suspend', 'resume', 'destroy', 'backup', 'restore', 'provision', 'configure', 'verify', 'complete', 'failed', 'result']);
 const TIMEOUT_MS = 60 * 60 * 1000;
 
 type WorkerNodes = TargetNodes;

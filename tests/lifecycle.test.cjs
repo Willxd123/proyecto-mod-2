@@ -123,13 +123,12 @@ test('suspender, reanudar y eliminar: estados, direcciones y auditoría completa
   const listed = (await (await api('/tenants')).json()).data.find(item => item.slug === SLUG);
   assert.equal(listed.simulated, true);
   assert.ok(!('resources' in listed));
-  assert.ok(fs.existsSync(path.resolve('infrastructure/observability/prometheus/targets', `tenant-${SLUG}.json`)));
+  // En simulación no se abren túneles ni se registran targets: el monitoreo queda constancia en la auditoría.
 
   response = await api(`/tenants/${SLUG}/delete`, { method: 'POST', body: { confirm: SLUG }, headers: LOCAL });
   assert.equal(response.status, 201);
   for (let i = 0; i < 60 && (await status()).status === 'DELETING'; i += 1) await sleep(500);
   assert.equal((await status()).status, 'DELETED');
-  assert.equal(fs.existsSync(path.resolve('infrastructure/observability/prometheus/targets', `tenant-${SLUG}.json`)), false);
 
   const audit = await (await api(`/audit?tenant=${SLUG}&limit=200`)).json();
   const actions = new Set(audit.data.map(e => e.action));

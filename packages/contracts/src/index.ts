@@ -107,6 +107,9 @@ export interface LifecycleOperation {
   operation_id: string; tenant_slug: string; action: LifecycleAction | 'create'; status: OperationStatus; stage: string;
   actor: string; simulated: boolean; started_at: string; events: AuditEventRecord[]; error: string | null;
 }
+export interface TenantAlertRecord { id: number; tenant_slug: string; title: string; severity: string; status: 'FIRING' | 'RESOLVED'; role: string | null; summary: string | null; detected_at: string; resolved_at: string | null; }
+export interface MonitoringTunnel { tenant_slug: string; role: string; local_port: number; status: 'starting' | 'up' | 'down'; restarts: number; }
+export interface MonitoringStatus { grafana_url: string; dashboard_url: string; prometheus_url: string; tunnels_enabled: boolean; webhook_configured: boolean; tunnels: MonitoringTunnel[]; }
 export interface AuthSession { token: string; user: string; expires_at: string; }
 
 export * from './validation';

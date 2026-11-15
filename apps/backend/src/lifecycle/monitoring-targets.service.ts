@@ -1,40 +1,33 @@
 import { Injectable } from '@nestjs/common';
-import { spawn } from 'node:child_process';
-import { SERVER_ROLES, type ServerRole } from '@modulo2/contracts';
 import { AuditService } from '../audit/audit.service';
-import { REPO_ROOT } from '../paths';
+import { TunnelsService, type TargetNodes } from '../monitoring/tunnels.service';
 
-export type TargetNodes = Record<ServerRole, { public_ip: string | null; private_ip: string }>;
+export type { TargetNodes };
 
 /**
- * Registra o retira los targets de Prometheus de un tenant con scripts/update_monitoring_targets.py.
- * Solo escribe el archivo de targets; no comprueba conectividad ni toca AWS.
+ * Registra o retira el monitoreo de un tenant: abre o cierra sus túneles SSH y los targets de Prometheus.
+ * Con los túneles deshabilitados (simulación o sin demo local) solo deja constancia en la auditoría.
  */
 @Injectable()
 export class MonitoringTargetsService {
-  constructor(private readonly audit: AuditService) {}
+  constructor(private readonly audit: AuditService, private readonly tunnels: TunnelsService) {}
 
-  /** Con nodes registra las tres direcciones del tenant; con null retira sus targets. */
+  /** Con nodes abre el monitoreo del tenant; con null lo retira. */
   async sync(slug: string, environment: string, nodes: TargetNodes | null, actor: string, operationId: string | null): Promise<void> {
-    const args = ['scripts/update_monitoring_targets.py', '--tenant', slug, '--environment', environment];
-    if (nodes) {
-      args.push('--frontend', nodes.frontend.public_ip ?? nodes.frontend.private_ip,
-        '--backend', nodes.backend.private_ip, '--database', nodes.database.private_ip);
+    let ok = true;
+    let message: string;
+    if (!this.tunnels.enabled()) {
+      message = nodes ? 'Monitoreo local deshabilitado en este equipo: no se abrieron túneles ni targets.' : 'Monitoreo local deshabilitado: no había túneles que cerrar.';
     } else {
-      args.push('--remove');
+      try {
+        if (nodes) await this.tunnels.ensure(slug, environment, nodes); else await this.tunnels.close(slug);
+        message = nodes ? 'Túneles SSH y targets de Prometheus registrados (node_exporter, PostgreSQL y sonda HTTPS).' : 'Túneles y targets de monitoreo retirados.';
+      } catch {
+        ok = false;
+        message = 'No se pudo actualizar el monitoreo del tenant.';
+      }
     }
-    const ok = await new Promise<boolean>(resolve => {
-      const child = spawn(process.platform === 'win32' ? 'python' : 'python3', args, { cwd: REPO_ROOT, windowsHide: true });
-      child.stdout.resume();
-      child.stderr.resume();
-      child.on('error', () => resolve(false));
-      child.on('close', code => resolve(code === 0));
-    });
-    await this.audit.record({
-      actor, action: 'MONITORING_TARGETS', status: ok ? 'INFO' : 'FAILED', tenant_slug: slug, operation_id: operationId,
-      stage: 'monitoring',
-      message: ok ? (nodes ? 'Targets de monitoreo registrados.' : 'Targets de monitoreo retirados.') : 'No se pudieron actualizar los targets de monitoreo.',
-      detail: { roles: nodes ? SERVER_ROLES.join(',') : 'ninguno' },
-    });
+    await this.audit.record({ actor, action: 'MONITORING_TARGETS', status: ok ? 'INFO' : 'FAILED', tenant_slug: slug, operation_id: operationId, stage: 'monitoring', message,
+      detail: { activo: nodes ? true : false, habilitado: this.tunnels.enabled() } });
   }
 }

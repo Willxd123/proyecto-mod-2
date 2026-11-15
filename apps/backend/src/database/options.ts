@@ -8,6 +8,7 @@ import { GoldenImagesAndPlanColumns1730000000001 } from './migrations/golden-ima
 import { TenantProvisioningFields1730000000002 } from './migrations/tenant-provisioning';
 import { LifecycleAndAudit1730000000003 } from './migrations/lifecycle-audit';
 import { TenantBackups1730000000004 } from './migrations/backups';
+import { TenantAlertsFromGrafana1730000000005 } from './migrations/alerts';
 
 config({ path: resolve(BACKEND_ROOT, '.env') });
 
@@ -22,7 +23,7 @@ export function databaseOptions(): TypeOrmModuleOptions {
     database: process.env.DATABASE_NAME ?? 'proyecto_modulo_2',
     ssl: process.env.DATABASE_SSL === 'true' ? { rejectUnauthorized: true } : false,
     entities: [CatalogPlan, GoldenImageRecord, Tenant, TenantAlert, AuditEvent, TenantBackup],
-    migrations: [InitialCatalog1730000000000, GoldenImagesAndPlanColumns1730000000001, TenantProvisioningFields1730000000002, LifecycleAndAudit1730000000003, TenantBackups1730000000004],
+    migrations: [InitialCatalog1730000000000, GoldenImagesAndPlanColumns1730000000001, TenantProvisioningFields1730000000002, LifecycleAndAudit1730000000003, TenantBackups1730000000004, TenantAlertsFromGrafana1730000000005],
     migrationsRun: true, synchronize: false, logging: false, retryAttempts: 1,
   };
 }

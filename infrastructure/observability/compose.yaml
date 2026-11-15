@@ -1,0 +1,59 @@
+# Observabilidad local del Tenant Control Center (RF-25 a RF-29): Prometheus + Grafana + blackbox.
+# Corre en el equipo del operador. Los servidores de cada tenant se alcanzan por túneles SSH que mantiene el panel,
+# así que no hace falta abrir puertos en AWS. Uso:  docker compose --env-file infrastructure/observability/.env -f infrastructure/observability/compose.yaml up -d
+name: tcc-observabilidad
+
+services:
+  prometheus:
+    image: ${PROMETHEUS_IMAGE:-prom/prometheus:latest}
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=7d
+      - --web.enable-lifecycle
+    ports:
+      - "127.0.0.1:9090:9090"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/targets:/etc/prometheus/targets:ro
+      - ./prometheus/targets-postgres:/etc/prometheus/targets-postgres:ro
+      - ./prometheus/targets-http:/etc/prometheus/targets-http:ro
+      - prometheus-data:/prometheus
+    restart: unless-stopped
+
+  blackbox:
+    image: ${BLACKBOX_IMAGE:-prom/blackbox-exporter:latest}
+    command: ["--config.file=/etc/blackbox/blackbox.yml"]
+    volumes:
+      - ./blackbox/blackbox.yml:/etc/blackbox/blackbox.yml:ro
+    restart: unless-stopped
+
+  grafana:
+    image: ${GRAFANA_IMAGE:-grafana/grafana-oss:latest}
+    ports:
+      - "127.0.0.1:${GRAFANA_PORT:-3002}:3000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?Defina GRAFANA_ADMIN_PASSWORD en infrastructure/observability/.env}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_UNIFIED_ALERTING_ENABLED: "true"
+      GF_ALERTING_ENABLED: "false"
+      # Se interpola en el archivo de alertas: token con el que Grafana entrega alertas al panel.
+      WEBHOOK_TOKEN: ${WEBHOOK_TOKEN:?Defina WEBHOOK_TOKEN en infrastructure/observability/.env (el mismo valor que en apps/backend/.env)}
+      CONTROL_CENTER_URL: ${CONTROL_CENTER_URL:-http://host.docker.internal:3000}
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
+volumes:
+  prometheus-data:
+  grafana-data:

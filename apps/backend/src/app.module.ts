@@ -3,7 +3,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { databaseOptions } from './database/options';
-import { AuditEvent, CatalogPlan, GoldenImageRecord, Tenant, TenantBackup } from './database/entities';
+import { AuditEvent, CatalogPlan, GoldenImageRecord, Tenant, TenantAlert, TenantBackup } from './database/entities';
 import { CatalogController } from './catalog/catalog.controller';
 import { CatalogService } from './catalog/catalog.service';
 import { ImagesController } from './images/images.controller';
@@ -27,6 +27,9 @@ import { AuthService } from './auth/auth.service';
 import { LifecycleController } from './lifecycle/lifecycle.controller';
 import { LifecycleService } from './lifecycle/lifecycle.service';
 import { MonitoringTargetsService } from './lifecycle/monitoring-targets.service';
+import { MonitoringController } from './monitoring/monitoring.controller';
+import { MonitoringService } from './monitoring/monitoring.service';
+import { TunnelsService } from './monitoring/tunnels.service';
 
 @Controller()
 class SystemController {
@@ -39,9 +42,9 @@ class SystemController {
 }
 
 @Module({
-  imports: [TypeOrmModule.forRoot(databaseOptions()), TypeOrmModule.forFeature([CatalogPlan, GoldenImageRecord, Tenant, AuditEvent, TenantBackup])],
-  controllers: [SystemController, CatalogController, ImagesController, TenantsController, ArtifactsController, SecurityController, DemoCredentialsController, DemoProvisioningController, AuthController, AuditController, LifecycleController],
+  imports: [TypeOrmModule.forRoot(databaseOptions()), TypeOrmModule.forFeature([CatalogPlan, GoldenImageRecord, Tenant, AuditEvent, TenantBackup, TenantAlert])],
+  controllers: [SystemController, CatalogController, ImagesController, TenantsController, ArtifactsController, SecurityController, DemoCredentialsController, DemoProvisioningController, AuthController, AuditController, LifecycleController, MonitoringController],
   providers: [CatalogService, ImagesService, TenantsService, ArtifactsService, SecurityService, DemoCredentialsService, DemoProvisioningService,
-    AuditService, AuthService, LifecycleService, MonitoringTargetsService, { provide: APP_GUARD, useClass: AuthGuard }],
+    AuditService, AuthService, LifecycleService, MonitoringTargetsService, MonitoringService, TunnelsService, { provide: APP_GUARD, useClass: AuthGuard }],
 })
 export class AppModule {}

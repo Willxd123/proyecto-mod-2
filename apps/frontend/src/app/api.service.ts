@@ -1,6 +1,6 @@
 import { inject, Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import type { ApiList, AuditList, AuditEventRecord, LifecycleAction, LifecycleOperation, TenantLifecycleInfo, AssistanceArtifactInspection, AssistanceArtifactJob, CreationReadiness, DemoProvisioningCapabilities, DemoProvisioningOperation, GoldenImage, Plan, SecurityScanResult, TenantDraftCreated, TenantDraftInput, TenantSummary, TenantTfvarsGenerated, TenantValidationResult } from '@modulo2/contracts';
+import type { MonitoringStatus, TenantAlertRecord, ApiList, AuditList, AuditEventRecord, LifecycleAction, LifecycleOperation, TenantLifecycleInfo, AssistanceArtifactInspection, AssistanceArtifactJob, CreationReadiness, DemoProvisioningCapabilities, DemoProvisioningOperation, GoldenImage, Plan, SecurityScanResult, TenantDraftCreated, TenantDraftInput, TenantSummary, TenantTfvarsGenerated, TenantValidationResult } from '@modulo2/contracts';
 
 @Injectable({ providedIn: 'root' })
 export class ApiService {
@@ -36,6 +36,11 @@ export class ApiService {
   lifecycleOperation(slug: string) { return this.http.get<{ data: LifecycleOperation | null }>(`/api/tenants/${encodeURIComponent(slug)}/lifecycle/operation`); }
   lifecycleAction(action: LifecycleAction, slug: string) {
     return this.http.post<{ data: LifecycleOperation }>(`/api/tenants/${encodeURIComponent(slug)}/${action}`, { confirm: slug }, { headers: { 'X-Requested-With': 'TenantControlCenter' } });
+  }
+  monitoringStatus() { return this.http.get<{ data: MonitoringStatus }>('/api/monitoring/status'); }
+  monitoringAlerts(filters: { tenant?: string; status?: string; limit?: number }) {
+    const params = Object.fromEntries(Object.entries(filters).filter(([, value]) => value !== '' && value !== undefined)) as Record<string, string | number>;
+    return this.http.get<{ data: TenantAlertRecord[] }>('/api/monitoring/alerts', { params });
   }
   restoreBackup(slug: string, backupId: string) {
     return this.http.post<{ data: LifecycleOperation }>(`/api/tenants/${encodeURIComponent(slug)}/restore`, { confirm: slug, backup_id: backupId }, { headers: { 'X-Requested-With': 'TenantControlCenter' } });

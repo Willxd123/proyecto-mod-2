@@ -46,6 +46,10 @@ export class TenantAlert {
   @Column({ type: 'varchar', length: 30 }) severity!: string;
   @Column({ type: 'varchar', length: 30 }) status!: string;
   @Column('timestamptz') detected_at!: Date;
+  @Column({ type: 'varchar', length: 80, nullable: true }) fingerprint!: string | null;
+  @Column({ type: 'varchar', length: 20, nullable: true }) role!: string | null;
+  @Column({ type: 'varchar', length: 300, nullable: true }) summary!: string | null;
+  @Column({ type: 'timestamptz', nullable: true }) resolved_at!: Date | null;
 }
 
 @Entity('golden_images')

@@ -1,0 +1,12 @@
+modules:
+  # La aplicación del tenant debe responder 200 en /api/health. Se acepta el certificado de IP aunque no se pueda
+  # validar desde el contenedor: lo que se mide es que la aplicación responda, no la cadena de confianza.
+  http_2xx:
+    prober: http
+    timeout: 8s
+    http:
+      method: GET
+      valid_status_codes: [200]
+      preferred_ip_protocol: ip4
+      tls_config:
+        insecure_skip_verify: true

@@ -1,6 +1,6 @@
 import type { Routes } from '@angular/router';
 import { CreateComponent } from './pages/create.component';
-import { PendingComponent } from './pages/pending.component';
+import { MonitoringComponent } from './pages/monitoring.component';
 import { PlansComponent } from './pages/plans.component';
 import { TeamComponent } from './pages/team.component';
 import { TenantsComponent } from './pages/tenants.component';
@@ -17,10 +17,7 @@ export const routes: Routes = [
   { path: 'crear', canActivate: [authGuard], component: CreateComponent, data: { title: 'Crear tenant (RF-07 a RF-13)' } },
   { path: 'tenants', canActivate: [authGuard], component: TenantsComponent, data: { title: 'Lista y Ciclo de Vida de Tenants (RF-14 a RF-18)' } },
   { path: 'seguridad', canActivate: [authGuard], component: SecurityComponent, data: { title: 'Escáner de Seguridad (RF-11)' } },
-  { path: 'monitoreo', canActivate: [authGuard], component: PendingComponent, data: { title: 'Monitoreo y Alertas en Grafana (RF-25 a RF-29)', heading: 'Salud, métricas y alertas con Grafana', rf: 'RF-25 a RF-29', owner: 'Integrante 6',
-    description: 'Filtra métricas por tenant y entorno: disponibilidad, CPU, RAM, disco, latencia, errores del backend y estado de PostgreSQL.',
-    tasks: ['Configurar el recolector y los dashboards.', 'Integrar los exporters preinstalados en las imágenes del Integrante 1 (node_exporter 9100, postgres_exporter).', 'Mostrar alertas por tenant y hora de detección.'] } },
-  { path: 'auditoria', component: AuditComponent, canActivate: [authGuard], data: { title: 'Auditoría de operaciones (RF-20)' } },
+  { path: 'monitoreo', canActivate: [authGuard], component: MonitoringComponent, data: { title: 'Monitoreo y Alertas en Grafana (RF-25 a RF-29)' } },
   { path: 'equipo', canActivate: [authGuard], component: TeamComponent, data: { title: 'División de 6 Integrantes y Mapeo de RFs' } },
   { path: '**', redirectTo: 'planes' },
 ];

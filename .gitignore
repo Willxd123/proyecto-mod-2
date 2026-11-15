@@ -38,6 +38,8 @@ infrastructure/packer/manifest-*.json
 infrastructure/packer/manifest-*.json.lock
 .tools/
 infrastructure/observability/prometheus/targets/tenant-*.json
+infrastructure/observability/prometheus/targets-http/tenant-*.json
+infrastructure/observability/prometheus/targets-postgres/tenant-*.json
 # Motor Terraform/OpenTofu (integrante 2): estado, datos de trabajo e inventarios por tenant
 infrastructure/terraform/terraform.tfstate.d/
 infrastructure/terraform/.work/

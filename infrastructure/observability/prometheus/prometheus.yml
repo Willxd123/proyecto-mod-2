@@ -1,0 +1,41 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    proyecto: proyecto-modulo-2
+
+scrape_configs:
+  # Métricas del propio Prometheus.
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+        labels: { scope: control-center }
+
+  # node_exporter de los 3 servidores de cada tenant. El panel mantiene un túnel SSH por servidor y registra aquí
+  # host.docker.internal:<puerto> con las etiquetas tenant, environment, role y scope=tenant.
+  - job_name: tenant-nodes
+    file_sd_configs:
+      - files: ["/etc/prometheus/targets/tenant-*.json"]
+        refresh_interval: 15s
+
+  # postgres_exporter del servidor de base de datos de cada tenant (estado de PostgreSQL y conexiones).
+  - job_name: tenant-postgres
+    file_sd_configs:
+      - files: ["/etc/prometheus/targets-postgres/tenant-*.json"]
+        refresh_interval: 15s
+
+  # Sonda HTTPS a la aplicación de cada tenant: disponibilidad, latencia y errores del backend.
+  - job_name: tenant-http
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    file_sd_configs:
+      - files: ["/etc/prometheus/targets-http/tenant-*.json"]
+        refresh_interval: 15s
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox:9115

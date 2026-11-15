@@ -14,6 +14,8 @@ export class AuthGuard implements CanActivate {
     const request = context.switchToHttp().getRequest<ActorRequest>();
     if (!this.auth.enabled()) { request.actor = 'local'; return true; }
     if (request.method === 'OPTIONS' || PUBLIC_PATHS.includes(request.path)) return true;
+    // El webhook de Grafana no tiene sesión de usuario: el controlador exige el token compartido.
+    if (request.method === 'POST' && request.path === '/api/monitoring/alerts') { request.actor = 'grafana'; return true; }
     const header = request.headers.authorization ?? '';
     const user = header.startsWith('Bearer ') ? this.auth.verify(header.slice(7)) : null;
     if (!user) throw new UnauthorizedException('Inicia sesión para continuar.');

@@ -31,6 +31,8 @@ Botón **Suspender** (tenant `ACTIVE`). Detiene las 3 instancias para no pagar c
 
 Botón **Reanudar** (tenant `SUSPENDED`). Inicia las 3 instancias y, como la IP pública cambia, vuelve a ejecutar la configuración con la IP nueva (nginx, certificado HTTPS y backend). Termina cuando el tenant responde; la URL nueva aparece en la lista. Tarda unos 8 minutos.
 
+Si la reanudación falla y el tenant queda en `ERROR`, el mismo botón aparece como **Reintentar reanudación**: vuelve a iniciar las instancias (si ya estaban encendidas no pasa nada) y repite la configuración con la IP actual. El rol del frontend retira el certificado que no corresponde a la IP y emite uno nuevo; esta ruta se verificó en AWS real.
+
 ## Respaldar
 
 Botón **Respaldar** (tenant `ACTIVE`). Copia la base de datos PostgreSQL del tenant con `pg_dump` y guarda el archivo **en el equipo del operador**, en `output/backups/<tenant>/`, junto con su checksum. El tenant sigue disponible. Los respaldos contienen datos reales: no se suben a Git ni se comparten.
@@ -49,6 +51,12 @@ La restauración solo aplica al mismo tenant del que se hizo el respaldo.
 
 Botón **Eliminar**. Muestra qué se borrará (instancias, discos y la base con todos sus datos, la red y el estado del motor) y pide escribir el identificador. Es definitivo. Llama al motor que creó el tenant (CloudFormation, Terraform, OpenTofu o Pulumi), que comprueba que los recursos sean de ese tenant antes de borrar. El registro queda como `DELETED` y su identificador no se reutiliza. Los respaldos guardados en el equipo no se borran.
 
+## Logs de los servidores
+
+Página **Logs** (tenant `ACTIVE`). Elija el tenant y la fuente: **Frontend** (Nginx accesos, Nginx errores, exporter de métricas, sistema), **Backend** (aplicación de asistencia, sistema) o **Base de datos** (PostgreSQL, sistema). Se leen por SSH en el momento, con una lista fija de comandos, y las líneas con contraseñas, tokens o claves se ocultan. Hay filtro de texto, 100/200/500 líneas, actualización cada 5 s y descarga `.log`. Un inicio de sesión rechazado se ve en **Nginx (accesos)** (`POST /api/auth/login/admin` con 4xx) y en el log de la aplicación. La primera consulta de cada fuente queda en la auditoría. También se abre desde Grafana: `Logs de este tenant (panel)`.
+
+Las fuentes «sistema» ocultan el ruido propio de la imagen base de AWS (IPMI, firmware).
+
 ## Consultar lo que pasó
 
 **Auditoría** lista cada acción con filtros por tenant, acción y resultado; «Ver operación» muestra la línea de tiempo completa. «Ver operación» en **Tenants** muestra el registro de la operación en curso.
@@ -57,4 +65,4 @@ Botón **Eliminar**. Muestra qué se borrará (instancias, discos y la base con 
 
 - No hay respaldos automáticos ni almacenamiento de respaldos fuera del equipo del operador.
 - No hay cambio de plan ni reintento automático de una operación fallida.
-- La evidencia de AWS real existe para CloudFormation (crear, suspender, reanudar y eliminar). Respaldar y restaurar, y los otros motores, están probados con pruebas automáticas y AWS simulado.
+- La evidencia de AWS real existe para CloudFormation (crear, suspender, reanudar, reintentar la reanudación y eliminar), para Terraform (crear) y para el visor de logs y las métricas. Respaldar y restaurar, OpenTofu y Pulumi están probados con pruebas automáticas y AWS simulado.

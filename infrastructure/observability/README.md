@@ -50,7 +50,7 @@ Ocho reglas evaluadas cada minuto: servidor sin respuesta, API sin responder 200
    ```powershell
    docker compose --env-file infrastructure/observability/.env -f infrastructure/observability/compose.yaml up -d
    ```
-4. Grafana: <http://localhost:3002> (usuario `admin` y la contraseña del `.env`); Prometheus: <http://localhost:9090>. El tablero es **Tenant Control Center → Salud por tenant**.
+4. Grafana: <http://localhost:3002> (usuario `admin` y la contraseña del `.env`); Prometheus: <http://localhost:9090>. Grafana abre en **Resumen de la plataforma** (tema oscuro): tarjetas, una fila por tenant, alertas activas y tráfico. El detalle de un tenant está en **Tenant Control Center → Salud por tenant**, que enlaza con la página **Logs** del panel.
 5. Con el panel en marcha y la demo local real habilitada, cada tenant `ACTIVE` abre solo sus túneles y aparece en el tablero. Al suspender o eliminar un tenant se cierran los túneles y desaparecen sus targets; al reanudar se vuelven a abrir con las direcciones nuevas.
 
 Detener: `docker compose --env-file infrastructure/observability/.env -f infrastructure/observability/compose.yaml down` (con `-v` también borra el historial).
@@ -69,6 +69,12 @@ Los servidores de cada tenant no son alcanzables desde fuera: el backend y la ba
 
 El bloque de puertos (desde 19100, de 10 en 10) se asigna una vez por tenant y se guarda en la base. Prometheus los alcanza como `host.docker.internal:<puerto>`. Los archivos de targets los escribe el panel en `prometheus/targets*/tenant-<id>.json` (Git los ignora). Si un túnel se cae se reintenta con espera creciente; **Monitoreo** muestra su estado.
 
+## Logs
+
+Grafana muestra métricas, no texto de logs. Los logs de cada servidor (frontend, backend y base de datos) se leen en la página **Logs** del panel (`/logs`), por SSH y sin agentes, y se enlazan desde los tableros. No se integró un agregador como Loki.
+
+Con los accesos del frontend (`access.log` y el log de métricas) y el registro de accesos de Gunicorn, un inicio de sesión rechazado se ve a la vez en el contador de Grafana y en *Logs → Nginx (accesos)*.
+
 ## Variables
 
 - `apps/backend/.env`: `WEBHOOK_TOKEN`, `GRAFANA_PORT` (3002 por defecto) y, opcionalmente, `MONITORING_TUNNELS=false` para no abrir túneles.
@@ -76,6 +82,7 @@ El bloque de puertos (desde 19100, de 10 en 10) se asigna una vez por tenant y s
 
 ## Límites
 
+- Verificado con un tenant real de CloudFormation: 6 targets UP (3 servidores, PostgreSQL, exporter de Nginx y la comprobación HTTP).
 - Solo funciona mientras el panel y los túneles estén en el equipo del operador; no hay monitoreo si ese equipo está apagado.
 - No hay métricas internas de la aplicación de asistencia (memoria del proceso, consultas): las de peticiones salen del registro de Nginx.
 - Las alertas de errores 5xx y de inicios de sesión dependen de que el exporter esté instalado en el frontend.

@@ -20,10 +20,12 @@
 
 **Enlaces Oficiales de Entrega (Entregables 1, 2, 5 y 8\)**
 
+> **Nota — el proyecto es un monorepo.** El código del panel (entregable 1) y el de infraestructura (entregable 2) viven en **un solo repositorio** con carpetas separadas, por lo que ambos enlaces apuntan al mismo lugar. Se explica en la sección 1.4.
+
 | Entregable / Recurso |  |
 | ----- | :---- |
-| **Entregable 1 — Repositorio Código Fuente (Frontend y Backend):** | \[Pegar enlace de GitHub aquí\] |
-| **Entregable 2 — Repositorio Infraestructura y Configuración (IaC):** | \[Pegar enlace de GitHub aquí\] |
+| **Entregable 1 — Código fuente (Frontend y Backend del panel):** | \[Pegar enlace del monorepo en GitHub\] — carpetas `apps/` y `packages/` |
+| **Entregable 2 — Infraestructura y configuración (IaC):** | \[Pegar el **mismo** enlace del monorepo\] — carpetas `infrastructure/`, `config/` y `scripts/` |
 | **Entregable 5 — URL del Tablero de Monitoreo y Alertas (Grafana):** | \[Pegar enlace de Grafana aquí\] — local: `http://localhost:3002` (inicio: «Resumen de la plataforma») |
 | **Entregable 8 — Video Demostrativo Final (Máx. 15 minutos):** | \[Pegar enlace de Google Drive aquí\] |
 
@@ -33,6 +35,7 @@
    * 1.1. Descripción General de la Solución Multi-Tenant  
    * 1.2. Usuarios del Sistema y Roles Operativos  
    * 1.3. Alcance Funcional Implementado y Nivel de Verificación  
+   * 1.4. Organización del Código: Monorepo y Guiones del Video  
 2. **2\. CATÁLOGO DE PLANES Y CAPACIDADES (ENTREGABLE 4\)**  
    * 2.1. Estructura de Planes Ofrecidos (RF-01, RF-02, RF-03)  
    * 2.2. Matriz Técnica de Recursos y Límites por Plan  
@@ -97,6 +100,28 @@ Para no presentar una simulación como un despliegue real, cada capacidad indica
 | **Visor de logs** de frontend, backend y base de datos de cada tenant | RF-11, RF-26 | Completo | AWS real |
 
 *(Nota de delimitación: la edición dinámica de planes RF-04, el bloqueo de cuotas RF-05, la migración de plan RF-06 y los reintentos automáticos complejos RF-12 se clasificaron como opcionales según la indicación del docente. El respaldo/restauración RF-19 y la auditoría RF-20, inicialmente opcionales, se implementaron porque forman parte de los entregables.)*
+
+## **1.4. Organización del Código: Monorepo y Guiones del Video**
+
+Todo el proyecto está en **un único repositorio (monorepo)** gestionado con `pnpm workspaces`. Los entregables 1 y 2 no son repositorios distintos: son carpetas del mismo repositorio.
+
+| Carpeta del monorepo | Contenido | Entregable |
+| ----- | ----- | :---: |
+| `apps/frontend` | Panel administrador en Angular 20 (planes, creación, tenants, monitoreo, logs, auditoría) | 1 |
+| `apps/backend` | API NestJS 11, entidades TypeORM, migraciones, ciclo de vida, auditoría, monitoreo y logs | 1 |
+| `packages/contracts` | Tipos compartidos entre panel y backend, versionados | 1 |
+| `config/` | `plans.json` (catálogo) y `golden-images.json` (AMIs por rol) | 2, 4 |
+| `infrastructure/packer`, `infrastructure/cloud-init` | Imágenes base y primer arranque | 2 |
+| `infrastructure/cloudformation`, `terraform`, `pulumi` | Motores de IaC (OpenTofu reutiliza los módulos de Terraform) | 2 |
+| `infrastructure/ansible` | Roles `database`, `backend` y `frontend` | 2 |
+| `infrastructure/observability` | Prometheus, Grafana, Blackbox, tableros y alertas como código | 2, 5 |
+| `scripts/` | Workers Python: aprovisionamiento, ciclo de vida, escáneres, log en vivo, catálogo | 2 |
+| `tests/` | Pruebas de API, de contratos de infraestructura y de los workers | 1, 2 |
+| `docs/` | Este informe, catálogo, instrucciones del tenant y guiones del video (`docs/guion/`) | 3, 4, 6, 8 |
+
+La **aplicación de asistencia** que corre dentro de cada tenant (la que usan docentes y estudiantes) **no está en este monorepo**: son dos repositorios aparte, `control-asistencia-backend` y `control-asistencia-frontend` (rama `main`). El monorepo los empaqueta y los despliega en cada tenant; su interfaz no es parte de lo evaluado, lo es la infraestructura que los crea y los opera.
+
+**Guiones del video (entregable 8):** en `docs/guion/` hay una guía común y un guion por integrante (1, 5 y 6) con qué mostrar, qué decir y qué código abrir.
 
 # **2\. CATÁLOGO DE PLANES Y CAPACIDADES (ENTREGABLE 4\)**
 
@@ -221,7 +246,7 @@ Cada transición se reclama de forma atómica en la base de datos (no pueden eje
 
 | Tecnología | Categoría | Función Específica en la Plataforma Multi-Tenant |
 | ----- | ----- | ----- |
-| **Packer** | Golden Images | Compila 3 AMIs (frontend, backend, base de datos) con Nginx, Python/Django, PostgreSQL y node-exporter preinstalados. Las 3 AMIs existen en `us-east-1` con prueba de humo. |
+| **Packer** | Golden Images | Compila 3 AMIs de Ubuntu 24.04 (frontend, backend, base de datos) con node-exporter en todas, Nginx en el frontend, Python y Gunicorn en el backend y PostgreSQL 16 en la base de datos. El código de la aplicación no va en la imagen: lo instala Ansible. Las 3 AMIs existen en `us-east-1` con prueba de humo. |
 | **cloud-init** | Primer arranque | Fija el hostname con el identificador del tenant, prepara llaves SSH y ajusta parámetros base. |
 | **CloudFormation** | Motor IaC | Plantilla YAML con un Stack por tenant (`i3-<tenant>`): VPC, subredes, Security Groups y 3 instancias. Su estado vive en AWS. |
 | **Terraform** | Motor IaC | Mismo diseño de 3 nodos con estado local aislado por tenant. |

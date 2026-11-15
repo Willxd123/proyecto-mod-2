@@ -10,11 +10,13 @@ import { Tenant } from '../database/entities';
 import { REPO_ROOT } from '../paths';
 
 export type TargetNodes = Record<ServerRole, { public_ip: string | null; private_ip: string }>;
-type TunnelRole = ServerRole | 'postgres';
+type TunnelRole = ServerRole | 'postgres' | 'app';
 
 interface TunnelState { slug: string; role: TunnelRole; port: number; remote: number; status: 'starting' | 'up' | 'down'; restarts: number;
   child?: ChildProcess; timer?: NodeJS.Timeout; wanted: boolean; command: { executable: string; args: string[] } }
 
+/** Puerto del exporter en el servidor: node_exporter, postgres_exporter y el exporter de peticiones de Nginx (frontend). */
+const REMOTE_PORTS: Record<TunnelRole, number> = { frontend: 9100, backend: 9100, database: 9100, postgres: 9187, app: 9102 };
 const BASE_PORT = 19100;
 const SLOT = 10;
 const OBSERVABILITY = resolve(REPO_ROOT, 'infrastructure/observability/prometheus');
@@ -74,10 +76,10 @@ export class TunnelsService implements OnModuleInit, OnApplicationShutdown {
   private command(role: TunnelRole, port: number, nodes: TargetNodes): { executable: string; args: string[] } {
     const key = process.env.DEMO_SSH_PRIVATE_KEY_WSL_PATH as string;
     const frontend = nodes.frontend.public_ip;
-    const serverRole: ServerRole = role === 'postgres' ? 'database' : role;
+    const serverRole: ServerRole = role === 'postgres' ? 'database' : role === 'app' ? 'frontend' : role;
     const target = serverRole === 'frontend' ? frontend : nodes[serverRole].private_ip;
     if (!frontend || isIP(frontend) !== 4 || !target || isIP(target) !== 4) throw new Error('Direcciones inválidas para el túnel.');
-    const remote = role === 'postgres' ? 9187 : 9100;
+    const remote = REMOTE_PORTS[role];
     const args = ['ssh', '-N', '-o', 'ExitOnForwardFailure=yes', '-o', 'ServerAliveInterval=30', '-o', 'ServerAliveCountMax=3',
       '-o', 'StrictHostKeyChecking=accept-new', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=20', '-i', key,
       '-L', `0.0.0.0:${port}:127.0.0.1:${remote}`];
@@ -88,15 +90,15 @@ export class TunnelsService implements OnModuleInit, OnApplicationShutdown {
     return { executable: 'wsl.exe', args: [...distro, '--exec', ...args] };
   }
 
-  /** Abre (o reabre) los cuatro túneles del tenant y registra sus targets en Prometheus. */
+  /** Abre (o reabre) los cinco túneles del tenant y registra sus targets en Prometheus. */
   async ensure(slug: string, environment: string, nodes: TargetNodes): Promise<void> {
     if (!this.enabled()) return;
     await this.close(slug, false);
     const base = await this.basePort(slug);
-    const roles: TunnelRole[] = [...SERVER_ROLES, 'postgres'];
+    const roles: TunnelRole[] = [...SERVER_ROLES, 'postgres', 'app'];
     roles.forEach((role, index) => {
       const port = base + index;
-      const state: TunnelState = { slug, role, port, remote: role === 'postgres' ? 9187 : 9100, status: 'starting', restarts: 0, wanted: true, command: this.command(role, port, nodes) };
+      const state: TunnelState = { slug, role, port, remote: REMOTE_PORTS[role], status: 'starting', restarts: 0, wanted: true, command: this.command(role, port, nodes) };
       this.tunnels.set(`${slug}:${role}`, state);
       this.launch(state);
     });
@@ -138,6 +140,7 @@ export class TunnelsService implements OnModuleInit, OnApplicationShutdown {
     const files: Record<string, unknown> = {
       targets: SERVER_ROLES.map((role, index) => ({ targets: [`${host}:${base + index}`], labels: labels(role) })),
       'targets-postgres': [{ targets: [`${host}:${base + 3}`], labels: labels('database') }],
+      'targets-app': [{ targets: [`${host}:${base + 4}`], labels: labels('frontend') }],
       'targets-http': [{ targets: [`https://${nodes.frontend.public_ip}/api/health`], labels: labels('app') }],
     };
     for (const [directory, content] of Object.entries(files)) {
@@ -150,7 +153,7 @@ export class TunnelsService implements OnModuleInit, OnApplicationShutdown {
   }
 
   private removeTargets(slug: string): void {
-    for (const directory of ['targets', 'targets-postgres', 'targets-http']) rmSync(resolve(OBSERVABILITY, directory, `tenant-${slug}.json`), { force: true });
+    for (const directory of ['targets', 'targets-postgres', 'targets-app', 'targets-http']) rmSync(resolve(OBSERVABILITY, directory, `tenant-${slug}.json`), { force: true });
   }
 
   /** Estado actual de los túneles para el panel. */

@@ -20,15 +20,27 @@ Prometheus, Grafana y un sondeador HTTP (blackbox) corren con Docker Compose en 
 | --- | --- |
 | Disponibilidad (RF-26) | `up` del node_exporter de cada servidor y sonda HTTPS a `/api/health` |
 | CPU, memoria y disco | node_exporter de los 3 servidores (`node_cpu_*`, `node_memory_*`, `node_filesystem_*`) |
-| Latencia y errores del backend | sonda `probe_duration_seconds`, `probe_http_status_code` y `probe_success` |
+| Latencia y errores del backend | sonda `probe_duration_seconds` y `probe_success` sobre `/api/health`, **y las peticiones reales de la aplicación** (ver abajo) |
+| Peticiones por segundo, latencia p95 por ruta, errores 5xx por ruta, códigos HTTP e inicios de sesión fallidos | exporter de Nginx en el frontend (`tcc_http_*`, `tcc_login_attempts_total`) |
 | Estado de PostgreSQL | postgres_exporter del servidor de base de datos (`pg_up`, conexiones activas) |
 | Por tenant y entorno (RF-27) | variables **Tenant** y **Entorno** del tablero; cada target lleva `tenant`, `environment`, `role` y `scope=tenant` |
 
-Los tableros y las alertas son código: `grafana/dashboards/tenant-health.json` y `grafana/provisioning/alerting/alertas.yaml`. No se configura nada a mano en la interfaz.
+Los tableros y las alertas son código (se regeneran con `python infrastructure/observability/generar_grafana.py`): `grafana/dashboards/tenant-health.json` y `grafana/provisioning/alerting/alertas.yaml`. No se configura nada a mano en la interfaz.
+
+## Métricas de la aplicación (peticiones reales)
+
+Nginx del frontend recibe todas las llamadas a la API. El rol de Ansible del frontend registra una línea por petición con un formato mínimo (hora, método, ruta sin parámetros, código y duración; sin IP ni cabeceras) y un exporter de Python de la biblioteca estándar (`roles/frontend/files/tcc_nginx_exporter.py`) la convierte en métricas en `127.0.0.1:9102`:
+
+- `tcc_http_requests_total{route,method,status}`: peticiones por ruta (los identificadores se agrupan: `/api/students/:id`).
+- `tcc_http_request_duration_seconds`: histograma por ruta (latencia p95).
+- `tcc_http_errors_total{route}`: respuestas 5xx.
+- `tcc_login_attempts_total{result}`: inicios de sesión correctos y fallidos (400, 401 o 403 en `/api/auth/login`).
+
+Si la instalación del exporter fallara, el tenant sigue operativo y solo faltan estas métricas. Solo los tenants creados o reconfigurados con esta versión las tienen.
 
 ## Alertas (RF-28 y RF-29)
 
-Seis reglas evaluadas cada minuto: servidor sin respuesta, API sin responder 200, PostgreSQL caído, y CPU, memoria o disco sobre el 85 %. Grafana entrega cada alerta (disparada y resuelta) al panel con `POST /api/monitoring/alerts`, autenticada con `WEBHOOK_TOKEN`. El panel la guarda en `tenant_alerts` con su tenant y la hora de detección y la muestra en **Monitoreo**.
+Ocho reglas evaluadas cada minuto: servidor sin respuesta, API sin responder 200, PostgreSQL caído, más de 5 % de respuestas 5xx, más de 10 inicios de sesión fallidos en 5 minutos, y CPU, memoria o disco sobre el 85 %. Grafana entrega cada alerta (disparada y resuelta) al panel con `POST /api/monitoring/alerts`, autenticada con `WEBHOOK_TOKEN`. El panel la guarda en `tenant_alerts` con su tenant y la hora de detección y la muestra en **Monitoreo**.
 
 ## Puesta en marcha
 
@@ -45,7 +57,7 @@ Detener: `docker compose --env-file infrastructure/observability/.env -f infrast
 
 ## Cómo se conectan los tenants
 
-Los servidores de cada tenant no son alcanzables desde fuera: el backend y la base de datos no tienen IP pública. El panel abre, por cada tenant, cuatro túneles SSH con la llave local (`DEMO_SSH_PRIVATE_KEY_WSL_PATH`), pasando por el frontend como bastión:
+Los servidores de cada tenant no son alcanzables desde fuera: el backend y la base de datos no tienen IP pública. El panel abre, por cada tenant, cinco túneles SSH con la llave local (`DEMO_SSH_PRIVATE_KEY_WSL_PATH`), pasando por el frontend como bastión:
 
 | Servidor | Destino remoto | Puerto local |
 | --- | --- | --- |
@@ -53,6 +65,7 @@ Los servidores de cada tenant no son alcanzables desde fuera: el backend y la ba
 | backend | `127.0.0.1:9100` | base + 1 |
 | database | `127.0.0.1:9100` | base + 2 |
 | database (PostgreSQL) | `127.0.0.1:9187` | base + 3 |
+| frontend (peticiones de la aplicación) | `127.0.0.1:9102` | base + 4 |
 
 El bloque de puertos (desde 19100, de 10 en 10) se asigna una vez por tenant y se guarda en la base. Prometheus los alcanza como `host.docker.internal:<puerto>`. Los archivos de targets los escribe el panel en `prometheus/targets*/tenant-<id>.json` (Git los ignora). Si un túnel se cae se reintenta con espera creciente; **Monitoreo** muestra su estado.
 
@@ -64,6 +77,7 @@ El bloque de puertos (desde 19100, de 10 en 10) se asigna una vez por tenant y s
 ## Límites
 
 - Solo funciona mientras el panel y los túneles estén en el equipo del operador; no hay monitoreo si ese equipo está apagado.
-- La latencia y los errores son los de `/api/health` medidos desde Prometheus, no métricas internas de la aplicación de asistencia.
+- No hay métricas internas de la aplicación de asistencia (memoria del proceso, consultas): las de peticiones salen del registro de Nginx.
+- Las alertas de errores 5xx y de inicios de sesión dependen de que el exporter esté instalado en el frontend.
 - Las alertas de una suspensión no se silencian solas: un tenant suspendido no tiene túneles ni targets, así que no genera alertas de servidor caído.
 - No se persiste el historial de Grafana fuera del volumen de Docker.

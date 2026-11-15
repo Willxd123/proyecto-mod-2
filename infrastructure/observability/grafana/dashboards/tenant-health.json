@@ -545,6 +545,339 @@
     },
     {
       "id": 10,
+      "title": "Aplicación de asistencia — peticiones, latencia por ruta, errores 5xx e inicios de sesión",
+      "type": "row",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 29,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 11,
+      "title": "Peticiones por segundo (por ruta)",
+      "type": "timeseries",
+      "description": "Tráfico de la API del tenant, medido en Nginx. Las rutas con identificadores se agrupan (:id).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 30,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {},
+          "unit": "reqps",
+          "min": 0
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (tenant, route) (rate(tcc_http_requests_total{scope=\"tenant\", tenant=~\"$tenant\", environment=~\"$environment\", job=\"tenant-app\", route!=\"/estaticos\"}[2m]))",
+          "legendFormat": "{{tenant}} {{route}}",
+          "instant": false
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "title": "Latencia p95 por ruta (ms)",
+      "type": "timeseries",
+      "description": "El 95 % de las peticiones de cada ruta tarda menos que este valor.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 30,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {},
+          "unit": "ms",
+          "min": 0
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "1000 * histogram_quantile(0.95, sum by (le, tenant, route) (rate(tcc_http_request_duration_seconds_bucket{scope=\"tenant\", tenant=~\"$tenant\", environment=~\"$environment\", job=\"tenant-app\", route!=\"/estaticos\"}[5m])))",
+          "legendFormat": "{{tenant}} {{route}}",
+          "instant": false
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "title": "Errores 5xx por segundo (por ruta)",
+      "type": "timeseries",
+      "description": "Respuestas 5xx del backend. Una ruta que aparece aquí es la que está fallando.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 38,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {},
+          "unit": "reqps",
+          "min": 0
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (tenant, route) (rate(tcc_http_errors_total{scope=\"tenant\", tenant=~\"$tenant\", environment=~\"$environment\", job=\"tenant-app\"}[2m]))",
+          "legendFormat": "{{tenant}} {{route}}",
+          "instant": false
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "title": "Inicios de sesión fallidos (últimos 5 min)",
+      "type": "stat",
+      "description": "Intentos rechazados (400, 401 o 403) en la ruta de login de la aplicación.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 38,
+        "w": 6,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "custom": {},
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 5
+              },
+              {
+                "color": "red",
+                "value": 10
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (tenant) (increase(tcc_login_attempts_total{scope=\"tenant\", tenant=~\"$tenant\", environment=~\"$environment\", job=\"tenant-app\", result=\"failed\"}[5m]))",
+          "legendFormat": "{{tenant}}",
+          "instant": true
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "area",
+        "textMode": "value_and_name"
+      }
+    },
+    {
+      "id": 15,
+      "title": "Inicios de sesión correctos (últimos 5 min)",
+      "type": "stat",
+      "description": "Inicios de sesión que respondieron 200.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 18,
+        "y": 38,
+        "w": 6,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (tenant) (increase(tcc_login_attempts_total{scope=\"tenant\", tenant=~\"$tenant\", environment=~\"$environment\", job=\"tenant-app\", result=\"ok\"}[5m]))",
+          "legendFormat": "{{tenant}}",
+          "instant": true
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "area",
+        "textMode": "value_and_name"
+      }
+    },
+    {
+      "id": 16,
+      "title": "Rutas con más tráfico (última hora)",
+      "type": "bargauge",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 46,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {},
+          "min": 0
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "topk(8, sum by (tenant, route) (increase(tcc_http_requests_total{scope=\"tenant\", tenant=~\"$tenant\", environment=~\"$environment\", job=\"tenant-app\", route!=\"/estaticos\"}[1h])))",
+          "legendFormat": "{{tenant}} {{route}}",
+          "instant": false
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "horizontal",
+        "displayMode": "gradient"
+      }
+    },
+    {
+      "id": 17,
+      "title": "Respuestas por código HTTP (por segundo)",
+      "type": "timeseries",
+      "description": "2xx correctas, 4xx errores del cliente (por ejemplo credenciales inválidas) y 5xx errores del backend.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 46,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {},
+          "unit": "reqps",
+          "min": 0
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (tenant, status) (rate(tcc_http_requests_total{scope=\"tenant\", tenant=~\"$tenant\", environment=~\"$environment\", job=\"tenant-app\"}[2m]))",
+          "legendFormat": "{{tenant}} {{status}}",
+          "instant": false
+        }
+      ]
+    },
+    {
+      "id": 18,
       "title": "Alertas activas",
       "type": "alertlist",
       "datasource": {
@@ -553,7 +886,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 29,
+        "y": 59,
         "w": 24,
         "h": 8
       },

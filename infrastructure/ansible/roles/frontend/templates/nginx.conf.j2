@@ -24,6 +24,8 @@ server {
     root /var/www/campus-cloud/{{ tenant_slug }}/current;
     index index.html;
     client_max_body_size 11m;
+    # Una línea por petición, sin IP ni parámetros, para las métricas de la aplicación (RF-26).
+    access_log /var/log/nginx/campus-cloud-{{ tenant_slug }}-metrics.log tcc_metrics;
 
     location /api/ {
         proxy_pass http://{{ backend_private_ip }}:{{ backend_port }};

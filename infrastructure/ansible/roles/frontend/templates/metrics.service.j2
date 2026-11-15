@@ -1,0 +1,19 @@
+[Unit]
+Description=Métricas de peticiones HTTP del tenant {{ tenant_slug }}
+After=nginx.service
+
+[Service]
+Type=simple
+User=nobody
+Group=nogroup
+SupplementaryGroups=adm
+ExecStart=/usr/bin/python3 /usr/local/lib/campus-cloud/tcc_nginx_exporter.py --log /var/log/nginx/campus-cloud-{{ tenant_slug }}-metrics.log --listen 127.0.0.1:9102
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

@@ -348,6 +348,134 @@ groups:
           }
         }
       - {
+          "uid": "tcc-errores-5xx",
+          "title": "Errores 5xx en la aplicación del tenant",
+          "condition": "C",
+          "data": [
+            {
+              "refId": "A",
+              "relativeTimeRange": {
+                "from": 600,
+                "to": 0
+              },
+              "datasourceUid": "prometheus",
+              "model": {
+                "expr": "100 * sum by (tenant) (rate(tcc_http_errors_total{scope=\"tenant\", job=\"tenant-app\"}[5m])) / sum by (tenant) (rate(tcc_http_requests_total{scope=\"tenant\", job=\"tenant-app\"}[5m]))",
+                "instant": true,
+                "intervalMs": 15000,
+                "maxDataPoints": 43200,
+                "refId": "A"
+              }
+            },
+            {
+              "refId": "B",
+              "datasourceUid": "__expr__",
+              "model": {
+                "type": "reduce",
+                "expression": "A",
+                "reducer": "last",
+                "refId": "B",
+                "settings": {
+                  "mode": "dropNN"
+                }
+              }
+            },
+            {
+              "refId": "C",
+              "datasourceUid": "__expr__",
+              "model": {
+                "type": "threshold",
+                "expression": "B",
+                "refId": "C",
+                "conditions": [
+                  {
+                    "evaluator": {
+                      "type": "gt",
+                      "params": [
+                        5
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          ],
+          "noDataState": "OK",
+          "execErrState": "OK",
+          "for": "2m",
+          "labels": {
+            "severity": "critical"
+          },
+          "annotations": {
+            "summary": "Más del 5% de las peticiones del tenant {{ $labels.tenant }} devuelven error 5xx",
+            "description": "El backend de la aplicación está fallando; ver el panel de errores por ruta."
+          }
+        }
+      - {
+          "uid": "tcc-login-fallidos",
+          "title": "Muchos inicios de sesión fallidos en el tenant",
+          "condition": "C",
+          "data": [
+            {
+              "refId": "A",
+              "relativeTimeRange": {
+                "from": 600,
+                "to": 0
+              },
+              "datasourceUid": "prometheus",
+              "model": {
+                "expr": "sum by (tenant) (increase(tcc_login_attempts_total{scope=\"tenant\", job=\"tenant-app\", result=\"failed\"}[5m]))",
+                "instant": true,
+                "intervalMs": 15000,
+                "maxDataPoints": 43200,
+                "refId": "A"
+              }
+            },
+            {
+              "refId": "B",
+              "datasourceUid": "__expr__",
+              "model": {
+                "type": "reduce",
+                "expression": "A",
+                "reducer": "last",
+                "refId": "B",
+                "settings": {
+                  "mode": "dropNN"
+                }
+              }
+            },
+            {
+              "refId": "C",
+              "datasourceUid": "__expr__",
+              "model": {
+                "type": "threshold",
+                "expression": "B",
+                "refId": "C",
+                "conditions": [
+                  {
+                    "evaluator": {
+                      "type": "gt",
+                      "params": [
+                        10
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          ],
+          "noDataState": "OK",
+          "execErrState": "OK",
+          "for": "1m",
+          "labels": {
+            "severity": "warning"
+          },
+          "annotations": {
+            "summary": "Más de 10 inicios de sesión fallidos en 5 minutos en el tenant {{ $labels.tenant }}",
+            "description": "Posible ataque de fuerza bruta o un problema con las credenciales."
+          }
+        }
+      - {
           "uid": "tcc-disco-alto",
           "title": "Disco casi lleno en servidor del tenant",
           "condition": "C",

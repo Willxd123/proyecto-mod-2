@@ -19,6 +19,7 @@ services:
       - ./prometheus/targets:/etc/prometheus/targets:ro
       - ./prometheus/targets-postgres:/etc/prometheus/targets-postgres:ro
       - ./prometheus/targets-http:/etc/prometheus/targets-http:ro
+      - ./prometheus/targets-app:/etc/prometheus/targets-app:ro
       - prometheus-data:/prometheus
     restart: unless-stopped
 

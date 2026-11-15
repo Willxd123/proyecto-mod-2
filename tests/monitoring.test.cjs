@@ -17,7 +17,7 @@ const { AppModule } = require('../apps/backend/dist/app.module');
 const { TunnelsService } = require('../apps/backend/dist/monitoring/tunnels.service');
 
 const SLUG = 'zz-prueba-monitor';
-const TARGETS = ['targets', 'targets-postgres', 'targets-http'].map(dir => path.resolve('infrastructure/observability/prometheus', dir, `tenant-${SLUG}.json`));
+const TARGETS = ['targets', 'targets-postgres', 'targets-app', 'targets-http'].map(dir => path.resolve('infrastructure/observability/prometheus', dir, `tenant-${SLUG}.json`));
 let app, base, token;
 const database = () => app.get(DataSource);
 const api = (route, { method = 'GET', body, headers = {}, session = true } = {}) => fetch(base + '/api' + route, {
@@ -96,7 +96,7 @@ test('estado: enlaces a Grafana y túneles deshabilitados fuera de la demo local
   assert.equal(data.webhook_configured, true);
 });
 
-test('túneles: cuatro conexiones por tenant a través del bastión, targets con etiquetas y cierre limpio', async () => {
+test('túneles: cinco conexiones por tenant a través del bastión, targets con etiquetas y cierre limpio', async () => {
   const service = app.get(TunnelsService);
   const calls = [];
   const killed = [];
@@ -112,30 +112,34 @@ test('túneles: cuatro conexiones por tenant a través del bastión, targets con
     assert.equal(service.enabled(), true);
     const nodes = { frontend: { public_ip: '198.51.100.7', private_ip: '10.0.1.10' }, backend: { public_ip: null, private_ip: '10.0.1.11' }, database: { public_ip: null, private_ip: '10.0.2.12' } };
     await service.ensure(SLUG, 'produccion', nodes);
-    assert.equal(calls.length, 4);
+    assert.equal(calls.length, 5);
     const joined = calls.map(call => call.args.join(' '));
     const ports = joined.map(line => Number(line.match(/-L 0\.0\.0\.0:(\d+):127\.0\.0\.1:(\d+)/)[1]));
-    assert.deepEqual(ports, [ports[0], ports[0] + 1, ports[0] + 2, ports[0] + 3]);
+    assert.deepEqual(ports, [ports[0], ports[0] + 1, ports[0] + 2, ports[0] + 3, ports[0] + 4]);
     assert.ok(ports[0] >= 19100);
     assert.match(joined[0], /ubuntu@198\.51\.100\.7$/);
     assert.ok(!joined[0].includes('ProxyCommand'), 'el frontend se conecta directo');
     assert.match(joined[1], /ProxyCommand=ssh -W %h:%p .* ubuntu@198\.51\.100\.7 ubuntu@10\.0\.1\.11$/);
     assert.match(joined[2], /ubuntu@10\.0\.2\.12$/);
     assert.match(joined[3], /:127\.0\.0\.1:9187 .* ubuntu@10\.0\.2\.12$/, 'postgres_exporter por el servidor de base de datos');
+    assert.match(joined[4], /:127\.0\.0\.1:9102 ubuntu@198\.51\.100\.7$/, 'exporter de peticiones de Nginx en el frontend, sin ProxyCommand');
+    assert.ok(!joined[4].includes('ProxyCommand'));
     assert.ok(joined.every(line => line.includes('StrictHostKeyChecking=accept-new') && line.includes('BatchMode=yes')));
 
-    const [nodesFile, postgresFile, httpFile] = TARGETS.map(file => JSON.parse(fs.readFileSync(file, 'utf8')));
+    const [nodesFile, postgresFile, appFile, httpFile] = TARGETS.map(file => JSON.parse(fs.readFileSync(file, 'utf8')));
     assert.deepEqual(nodesFile.map(group => group.labels.role), ['frontend', 'backend', 'database']);
     assert.deepEqual(nodesFile[0].labels, { tenant: SLUG, environment: 'produccion', role: 'frontend', scope: 'tenant' });
     assert.equal(nodesFile[1].targets[0], `host.docker.internal:${ports[1]}`);
     assert.equal(postgresFile[0].targets[0], `host.docker.internal:${ports[3]}`);
+    assert.equal(appFile[0].targets[0], `host.docker.internal:${ports[4]}`);
+    assert.equal(appFile[0].labels.role, 'frontend');
     assert.deepEqual(httpFile[0].targets, ['https://198.51.100.7/api/health']);
-    assert.deepEqual(service.status().map(item => item.status), ['starting', 'starting', 'starting', 'starting']);
+    assert.deepEqual(service.status().map(item => item.status), ['starting', 'starting', 'starting', 'starting', 'starting']);
 
     // Reabrir reutiliza el mismo bloque de puertos y no deja procesos duplicados.
     await service.ensure(SLUG, 'produccion', nodes);
-    assert.equal(killed.length, 4);
-    const again = calls.slice(4).map(call => Number(call.args.join(' ').match(/-L 0\.0\.0\.0:(\d+):/)[1]));
+    assert.equal(killed.length, 5);
+    const again = calls.slice(5).map(call => Number(call.args.join(' ').match(/-L 0\.0\.0\.0:(\d+):/)[1]));
     assert.deepEqual(again, ports);
 
     await service.close(SLUG);

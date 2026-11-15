@@ -24,6 +24,12 @@ scrape_configs:
       - files: ["/etc/prometheus/targets-postgres/tenant-*.json"]
         refresh_interval: 15s
 
+  # Métricas de peticiones de la aplicación (Nginx del frontend): peticiones, latencia por ruta, errores 5xx e inicios de sesión.
+  - job_name: tenant-app
+    file_sd_configs:
+      - files: ["/etc/prometheus/targets-app/tenant-*.json"]
+        refresh_interval: 15s
+
   # Sonda HTTPS a la aplicación de cada tenant: disponibilidad, latencia y errores del backend.
   - job_name: tenant-http
     metrics_path: /probe

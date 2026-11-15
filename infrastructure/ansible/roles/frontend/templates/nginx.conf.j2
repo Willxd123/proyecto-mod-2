@@ -26,6 +26,8 @@ server {
     client_max_body_size 11m;
     # Una línea por petición, sin IP ni parámetros, para las métricas de la aplicación (RF-26).
     access_log /var/log/nginx/campus-cloud-{{ tenant_slug }}-metrics.log tcc_metrics;
+    # Registro completo de accesos (visible en la página Logs del panel); al declarar el de métricas, Nginx ya no usa el global.
+    access_log /var/log/nginx/access.log;
 
     location /api/ {
         proxy_pass http://{{ backend_private_ip }}:{{ backend_port }};

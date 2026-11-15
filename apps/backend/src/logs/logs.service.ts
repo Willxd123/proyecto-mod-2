@@ -30,6 +30,8 @@ const SOURCES: SourceDefinition[] = [
 ];
 
 const SENSITIVE = /pass(word|wd)?\b|passw|secret|token|vault|authorization|credential|contrase|clave|private[_ -]?key|jwt|api[_-]?key|cookie|BEGIN [A-Z ]*KEY/i;
+// Avisos que trae la imagen base de AWS y no indican ningún problema del tenant (hardware que una máquina virtual no tiene).
+const RUIDO_SISTEMA = /i8042: Warning|Failed to populate \/etc with preset|regulatory\.db|openipmi\.service|OpenIPMI|faux_driver|Special user nobody configured/i;
 const MAX_LINES = 500;
 const MAX_BYTES = 400_000;
 const LOCAL_ADDRESSES = ['127.0.0.1', '::1', '::ffff:127.0.0.1'];
@@ -108,7 +110,7 @@ export class LogsService {
     if (initial) {
       await this.audit.record({ actor, action: 'LOGS_VIEW', status: 'INFO', tenant_slug: slug, message: `Consulta de logs: ${cleanText(source.label, 80)}.`, detail: { fuente: source.id, lineas: lines } });
     }
-    const cleaned = LogsService.clean(stdout.slice(-MAX_BYTES));
+    const cleaned = LogsService.clean(stdout.slice(-MAX_BYTES)).filter(line => !source.id.endsWith('-sistema') || !RUIDO_SISTEMA.test(line));
     return { tenant_slug: slug, source: source.id, label: source.label, fetched_at: new Date().toISOString(), lines: cleaned.slice(-lines), truncated: stdout.length >= MAX_BYTES };
   }
 }

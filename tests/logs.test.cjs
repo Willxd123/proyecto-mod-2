@@ -106,3 +106,15 @@ test('rechaza fuentes desconocidas, tenants que no están activos y errores de S
     assert.equal((await api(`/tenants/${SLUG}/logs?source=backend-aplicacion`)).status, 409);
   } finally { restaurar(); }
 });
+
+test('las fuentes de sistema ocultan el ruido de la imagen base y conservan los avisos reales', async () => {
+  const restaurar = activar();
+  await database().query("UPDATE tenants SET status = 'ACTIVE' WHERE slug = $1", [SLUG]);
+  service.runner = async () => ({ code: 0, stdout: ['kernel: i8042: Warning: Keylock active', 'systemd[1]: Failed to start openipmi.service - LSB: OpenIPMI Driver init script.', 'sshd[10]: error: connection reset by peer'].join('\n') });
+  try {
+    const data = (await (await api(`/tenants/${SLUG}/logs?source=backend-sistema`)).json()).data;
+    assert.deepEqual(data.lines, ['sshd[10]: error: connection reset by peer']);
+    const acceso = (await (await api(`/tenants/${SLUG}/logs?source=frontend-errores`)).json()).data;
+    assert.equal(acceso.lines.length, 3, 'solo las fuentes de sistema se filtran');
+  } finally { restaurar(); }
+});
